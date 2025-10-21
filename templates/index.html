@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>我的菜谱列表</h2>
+    <ul class="recipe-list">
+        {% for recipe in recipes %}
+            <li>
+                <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}">{{ recipe.name }}</a>
+            </li>
+        {% else %}
+            <li>您还没有添加任何菜谱。</li>
+        {% endfor %}
+    </ul>
+{% endblock %}

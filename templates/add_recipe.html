@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>添加新菜谱</h2>
+    
+    <form action="{{ url_for('add_recipe') }}" method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="recipe_name">菜谱名称:</label>
+            <input type="text" id="recipe_name" name="recipe_name" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="recipe_image">上传图片 (可选):</label>
+            <input type="file" id="recipe_image" name="recipe_image" accept="image/png, image/jpeg, image/gif">
+        </div>
+
+        <div class="form-group">
+            <label>所需食材:</label>
+            <div id="ingredients_list">
+                <div class="ingredient-item">
+                    <input type="text" name="ingredient_name[]" placeholder="食材名称 (如: 鸡蛋)">
+                    <input type="text" name="ingredient_qty[]" placeholder="用量 (如: 2个)">
+                </div>
+            </div>
+            <button type="button" onclick="addIngredient()">+ 添加食材</button>
+        </div>
+
+        <div class="form-group">
+            <label>所需调料:</label>
+            <div id="seasonings_list">
+                <div class="seasoning-item">
+                    <input type="text" name="seasoning_name[]" placeholder="调料名称 (如: 盐)">
+                    <input type="text" name="seasoning_qty[]" placeholder="用量 (如: 1勺)">
+                </div>
+            </div>
+            <button type="button" onclick="addSeasoning()">+ 添加调料</button>
+        </div>
+
+        <div class="form-group">
+            <label for="instructions">制作步骤:</label>
+            <textarea id="instructions" name="instructions" rows="10"></textarea>
+        </div>
+        
+        <button type="submit" class="btn">保存菜谱</button>
+    </form>
+
+    <script>
+    // 添加食材
+    function addIngredient() {
+        var list = document.getElementById('ingredients_list');
+        var newItem = document.createElement('div');
+        newItem.classList.add('ingredient-item');
+        newItem.innerHTML = `
+            <input type="text" name="ingredient_name[]" placeholder="食材名称">
+            <input type="text" name="ingredient_qty[]" placeholder="用量">
+            <button type="button" onclick="removeItem(this)">移除</button>
+        `;
+        list.appendChild(newItem);
+    }
+    
+    // 添加调料
+    function addSeasoning() {
+        var list = document.getElementById('seasonings_list');
+        var newItem = document.createElement('div');
+        newItem.classList.add('seasoning-item');
+        newItem.innerHTML = `
+            <input type="text" name="seasoning_name[]" placeholder="调料名称">
+            <input type="text" name="seasoning_qty[]" placeholder="用量">
+            <button type="button" onclick="removeItem(this)">移除</button>
+        `;
+        list.appendChild(newItem);
+    }
+
+    // 通用的移除功能
+    function removeItem(button) {
+        button.parentElement.remove();
+    }
+    </script>
+{% endblock %}

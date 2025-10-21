@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>我能做什么?</h2>
+    <p>请输入您当前拥有的 **食材** (不是调料)，用 **逗号、空格 或 换行** 分隔。</p>
+    
+    <form action="{{ url_for('what_can_i_make') }}" method="POST">
+        <div class="form-group">
+            <label for="pantry">我有的食材:</label>
+            <textarea id="pantry" name="pantry" rows="5" placeholder="例如: 鸡蛋, 五花肉, 辣椒">{{ pantry_input }}</textarea>
+        </div>
+        <button type="submit" class="btn">开始筛选</button>
+    </form>
+
+    <hr>
+
+    {% if has_searched %}
+        
+        <h3>您可以做的菜 (完美匹配)</h3>
+        {% if perfect_matches %}
+            <ul class="recipe-list">
+                {% for recipe in perfect_matches %}
+                    <li>
+                        <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}">{{ recipe.name }}</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>没有找到所有食材都匹配的菜谱。</p>
+        {% endif %}
+
+        <br>
+
+        <h3>还差一点的菜 (部分匹配)</h3>
+        {% if partial_matches %}
+            <ul class="recipe-list">
+                {% for recipe, missing in partial_matches %}
+                    <li>
+                        <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}">{{ recipe.name }}</a>
+                        <br>
+                        <small style="color: #888;">(还缺: {{ missing | join(', ') }})</small>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>没有找到部分匹配的菜谱。</p>
+        {% endif %}
+
+    {% endif %}
+{% endblock %}

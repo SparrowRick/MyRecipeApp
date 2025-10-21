@@ -1,0 +1,15 @@
+# Python 虚拟环境
+venv/
+
+# Python 缓存文件
+__pycache__/
+*.pyc
+
+# 操作系统文件
+.DS_Store
+
+# 关键：用户数据 (数据库和图片)
+# 我们稍后会用 scp 命令单独上传它们
+*.db
+*.sqlite3
+static/uploads/
