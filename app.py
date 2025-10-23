@@ -155,7 +155,41 @@ def add_recipe():
 def recipe_detail(recipe_id):
     recipe = Recipe.query.get_or_404(recipe_id)
     return render_template('recipe_detail.html', recipe=recipe)
-
+# NEW: 删除菜谱的路由
+@app.route('/recipe/<int:recipe_id>/delete', methods=['POST'])
+def delete_recipe(recipe_id):
+    # 1. 根据ID找到要删除的菜谱
+    recipe_to_delete = Recipe.query.get_or_404(recipe_id)
+    
+    # 2. (可选但推荐) 删除关联的图片文件，以节省服务器空间
+    image_filename = recipe_to_delete.image_file
+    if image_filename != 'default.jpg': # 不删除默认图片
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
+        try:
+            if os.path.exists(image_path):
+                os.remove(image_path)
+        except Exception as e:
+            # 即使图片删除失败，也继续删除数据库条目
+            print(f"警告: 无法删除图片 {image_path}. 错误: {e}")
+            pass 
+    
+    try:
+        # 3. 从数据库中删除该菜谱
+        # (由于我们设置了级联删除, 相关的食材、调料、日志也会被自动删除)
+        db.session.delete(recipe_to_delete)
+        
+        # 4. 提交更改
+        db.session.commit()
+        
+        flash(f'菜谱 "{recipe_to_delete.name}" 已被成功删除。', 'success')
+        # 5. 重定向回主页
+        return redirect(url_for('index'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'删除菜谱时出错: {e}', 'error')
+        return redirect(url_for('recipe_detail', recipe_id=recipe_id))
+# --- (新代码结束) ---
 @app.route('/recipe/<int:recipe_id>/add_log', methods=['POST'])
 def add_log(recipe_id):
     recipe = Recipe.query.get_or_404(recipe_id)

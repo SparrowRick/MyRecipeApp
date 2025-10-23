@@ -56,4 +56,17 @@
             <li>暂无历史日志。</li>
         {% endfor %}
     </ul>
+    <hr style="margin-top: 30px;">
+    <div class="danger-zone" style="margin-top: 20px;">
+        <h3>危险操作</h3>
+        
+        <form action="{{ url_for('delete_recipe', recipe_id=recipe.id) }}" 
+              method="POST" 
+              onsubmit="return confirm('您确定要永久删除这道菜谱吗？此操作无法撤销！');">
+            
+            <button type="submit" class="btn btn-danger">
+                删除这道菜谱
+            </button>
+        </form>
+    </div>
 {% endblock %}
