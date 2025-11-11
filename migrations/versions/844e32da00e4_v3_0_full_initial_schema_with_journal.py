@@ -1,8 +1,8 @@
-"""Initial V2.5 schema
+"""V3.0 - Full Initial Schema with Journal
 
-Revision ID: f806d84a1a21
+Revision ID: 844e32da00e4
 Revises: 
-Create Date: 2025-11-11 21:48:10.686034
+Create Date: 2025-11-11 22:28:53.492337
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'f806d84a1a21'
+revision = '844e32da00e4'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -28,6 +28,15 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('invite_code'),
     sa.UniqueConstraint('username')
+    )
+    op.create_table('journal_entry',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('date_str', sa.String(length=10), nullable=False),
+    sa.Column('content', sa.Text(), nullable=False),
+    sa.Column('author_id', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['author_id'], ['user.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('date_str', 'author_id', name='_date_author_uc')
     )
     op.create_table('recipe',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -72,5 +81,6 @@ def downgrade():
     op.drop_table('ingredient')
     op.drop_table('cooking_log')
     op.drop_table('recipe')
+    op.drop_table('journal_entry')
     op.drop_table('user')
     # ### end Alembic commands ###

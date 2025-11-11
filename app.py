@@ -1,5 +1,6 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify
+from sqlalchemy import or_
 from flask_sqlalchemy import SQLAlchemy
 import datetime
 from werkzeug.utils import secure_filename
@@ -58,6 +59,7 @@ class User(UserMixin, db.Model):
         primaryjoin=partner_id == id, # 本地的 partner_id == 远程的 id
         uselist=False # 关系只返回一个人, 而不是列表
     )
+    journal_entries = db.relationship('JournalEntry', backref='author', lazy=True)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -110,6 +112,18 @@ class CookingLog(db.Model):
     time_taken = db.Column(db.String(50), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     recipe_id = db.Column(db.Integer, db.ForeignKey('recipe.id'), nullable=False)
+
+# --- NEW: 日记模型 ---
+class JournalEntry(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    # 2025-10-25 这样的日期字符串
+    date_str = db.Column(db.String(10), nullable=False) 
+    content = db.Column(db.Text, nullable=False)
+    # 作者是谁
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    
+    # 我们为 date_str 和 author_id 创建一个联合索引，确保一个人一天只能写一篇日记
+    __table_args__ = (db.UniqueConstraint('date_str', 'author_id', name='_date_author_uc'),)
 
 
 def allowed_file(filename):
@@ -194,8 +208,17 @@ def logout():
 @app.route('/')
 @login_required
 def index():
-# ... (existing code) ...
-    all_recipes = Recipe.query.filter_by(user_id=current_user.id).all()
+    # --- NEW: 我们现在共享菜谱! ---
+    # 1. 找到您和您伴侣的 ID
+    user_ids_to_query = [current_user.id]
+    if current_user.partner_id:
+        user_ids_to_query.append(current_user.partner_id)
+        
+    # 2. 查询所有 (author_id 在这个列表中的) 菜谱
+    all_recipes = Recipe.query.filter(
+        Recipe.user_id.in_(user_ids_to_query)
+    ).order_by(Recipe.id.desc()).all() # 按 ID 降序排列
+    
     return render_template('index.html', recipes=all_recipes)
 
 @app.route('/add_recipe', methods=['GET', 'POST'])
@@ -283,11 +306,19 @@ def add_recipe():
 @app.route('/recipe/<int:recipe_id>')
 @login_required
 def recipe_detail(recipe_id):
-# ... (existing code) ...
-    recipe = Recipe.query.filter_by(id=recipe_id, user_id=current_user.id).first()
-    if not recipe:
-        abort(404)
+    # --- NEW: 允许查看伴侣的菜谱 ---
+    user_ids_to_query = [current_user.id]
+    if current_user.partner_id:
+        user_ids_to_query.append(current_user.partner_id)
         
+    recipe = Recipe.query.filter(
+        Recipe.id == recipe_id,
+        Recipe.user_id.in_(user_ids_to_query)
+    ).first()
+
+    if not recipe:
+        abort(404) # 如果菜谱不属于您们俩, 404
+    
     return render_template('recipe_detail.html', recipe=recipe)
 
 @app.route('/recipe/<int:recipe_id>/delete', methods=['POST'])
@@ -343,46 +374,41 @@ def add_log(recipe_id):
 @app.route('/what_can_i_make', methods=['GET', 'POST'])
 @login_required
 def what_can_i_make():
-# ... (existing code) ...
+    # --- NEW: 筛选我们俩的菜谱 ---
+    user_ids_to_query = [current_user.id]
+    if current_user.partner_id:
+        user_ids_to_query.append(current_user.partner_id)
     perfect_matches = []
     partial_matches = []
     pantry_input = "" 
-    import re # 确保导入 re
-
+    import re
     if request.method == 'POST':
-# ... (existing code) ...
         pantry_input = request.form['pantry']
         user_pantry_list = re.split(r'[,\s\n]+', pantry_input)
         user_pantry_set = {item.strip() for item in user_pantry_list if item.strip()}
-
         if not user_pantry_set:
-# ... (existing code) ...
             flash('请输入您拥有的食材！', 'error')
             return render_template('what_can_i_make.html', pantry_input=pantry_input)
-
-        all_recipes = Recipe.query.filter_by(user_id=current_user.id).all()
+        
+        # 2. 查询所有 (author_id 在这个列表中的) 菜谱
+        all_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids_to_query)).all()
         
         for recipe in all_recipes:
-# ... (existing code) ...
             required_ingredients_set = {ing.name.strip() for ing in recipe.ingredients}
             if not required_ingredients_set:
                 continue
-            
             if required_ingredients_set.issubset(user_pantry_set):
-# ... (existing code) ...
                 perfect_matches.append(recipe)
             else:
                 missing_ingredients = required_ingredients_set.difference(user_pantry_set)
                 if len(missing_ingredients) < len(required_ingredients_set):
-# ... (existing code) ...
                     partial_matches.append((recipe, list(missing_ingredients)))
-
     return render_template('what_can_i_make.html', 
-# ... (existing code) ...
                            perfect_matches=perfect_matches, 
                            partial_matches=partial_matches,
                            pantry_input=pantry_input,
                            has_searched=request.method == 'POST')
+
 @app.route('/partner', methods=['GET'])
 @login_required
 def partner_page():
@@ -464,7 +490,91 @@ def redeem_invite_code():
         flash(f'绑定时发生错误: {e}', 'error')
 
     return redirect(url_for('partner_page'))
+@app.route('/journal')
+@login_required
+def journal():
+    # 1. 确保已绑定伴侣
+    if not current_user.partner_id:
+        flash('您必须先绑定伴侣才能使用共享日记。', 'error')
+        return redirect(url_for('partner_page'))
+        
+    # 2. 获取您和伴侣的 ID
+    user_ids = [current_user.id, current_user.partner_id]
+    
+    # 3. 获取日历数据 (json)
+    entries = JournalEntry.query.filter(
+        JournalEntry.author_id.in_(user_ids)
+    ).all()
+    
+    # 4. 格式化数据以便日历 JS 使用
+    calendar_data = {}
+    for entry in entries:
+        date = entry.date_str
+        if date not in calendar_data:
+            calendar_data[date] = {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}
+            
+        if entry.author_id == current_user.id:
+            calendar_data[date]['me'] = True
+            calendar_data[date]['me_content'] = entry.content
+        else:
+            calendar_data[date]['partner'] = True
+            calendar_data[date]['partner_content'] = entry.content
+            
+    # 5. 渲染日历页面, 传入数据
+    return render_template(
+        'journal.html', 
+        calendar_data=calendar_data,
+        partner_name=current_user.partner.username
+    )
 
+@app.route('/journal/add', methods=['POST'])
+@login_required
+def add_journal_entry():
+    if not current_user.partner_id:
+        return jsonify({'status': 'error', 'message': '未绑定伴侣'}), 403
+
+    data = request.json
+    date_str = data.get('date')
+    content = data.get('content')
+
+    if not date_str or not content:
+        return jsonify({'status': 'error', 'message': '日期或内容不能为空'}), 400
+
+    # 检查是否已有条目
+    existing_entry = JournalEntry.query.filter_by(
+        date_str=date_str, 
+        author_id=current_user.id
+    ).first()
+
+    try:
+        if existing_entry:
+            # 更新
+            existing_entry.content = content
+            db.session.commit()
+            return jsonify({'status': 'success', 'message': '日记已更新'})
+        else:
+            # 新建
+            new_entry = JournalEntry(
+                date_str=date_str,
+                content=content,
+                author_id=current_user.id
+            )
+            db.session.add(new_entry)
+            db.session.commit()
+            return jsonify({'status': 'success', 'message': '日记已保存'})
+            
+    except Exception as e:
+        db.session.rollback()
+        # 处理 (一个人一天只能写一篇) 的唯一约束错误
+        if "UNIQUE constraint failed" in str(e):
+             # 这种情况下，我们尝试更新它，因为约束失败意味着它存在
+             existing_entry = JournalEntry.query.filter_by(date_str=date_str, author_id=current_user.id).first()
+             if existing_entry:
+                 existing_entry.content = content
+                 db.session.commit()
+                 return jsonify({'status': 'success', 'message': '日记已更新 (覆盖旧条目)'})
+        
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 # --- 启动器 ---
 if __name__ == '__main__':
     # ... (db.create_all() 和 app.run() 不变) ...

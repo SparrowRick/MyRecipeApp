@@ -1,13 +1,46 @@
 {% extends "base.html" %}
 {% block content %}
-    <h2>我的菜谱列表</h2>
+    <h2>📅 共享菜谱列表</h2>
+    <p>这里会显示您和您伴侣添加的所有菜谱。</p>
+    
     <ul class="recipe-list">
         {% for recipe in recipes %}
             <li>
+                <!-- 菜谱名称链接 -->
                 <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}">{{ recipe.name }}</a>
+                
+                <!-- NEW: 显示作者 -->
+                <span style="font-size: 0.9em; color: #555; margin-left: 10px;">
+                    (由 
+                    {% if recipe.author_id == current_user.id %}
+                        <strong style="color: #007BFF;">我</strong>
+                    {% else %}
+                        <strong style="color: #28a745;">{{ recipe.author.username }}</strong>
+                    {% endif %}
+                    添加)
+                </span>
             </li>
         {% else %}
-            <li>您还没有添加任何菜谱。</li>
+            <li>您和您的伴侣还没有添加任何菜谱。</li>
+            <li><a href="{{ url_for('add_recipe') }}" class="btn">去添加第一道菜谱！</a></li>
         {% endfor %}
     </ul>
+    
+    <!-- 确保样式在 base.html 中 (我们已经添加了) -->
+    <style>
+        .recipe-list li { 
+            margin-bottom: 12px; 
+            padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+            font-size: 1.1em;
+        }
+        .recipe-list li a {
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+        }
+        .recipe-list li a:hover {
+            text-decoration: underline;
+        }
+    </style>
 {% endblock %}

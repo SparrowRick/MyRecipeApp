@@ -1,29 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<!-- ... (head 和 style 标签不变) ... -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的私人菜谱</title>
+    <title>情侣空间</title> <!-- NEW: 标题更新 -->
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f4f4; padding-top: 60px; /* 为固定导航栏留出空间 */ }
-        
-        /* --- 导航栏样式 --- */
-        nav { 
-            background: #333; 
-            padding: 0 20px; 
-            margin-bottom: 20px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            height: 60px;
-            position: fixed; /* 固定在顶部 */
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
+        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f4f4; padding-top: 60px; }
+        nav { background: #333; padding: 0 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; height: 60px; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
         .nav-left, .nav-right { display: flex; align-items: center; }
         nav a { color: white; text-decoration: none; padding: 20px 15px; height: 100%; }
         nav a:hover, nav a.active { background: #555; }
@@ -31,53 +14,133 @@
         .nav-right a.logout-btn { background-color: #c82333; }
         .nav-right a.logout-btn:hover { background-color: #DC3545; }
 
-        /* NEW: 临时认领按钮的样式 */
-        .nav-left a.claim-btn {
-            background-color: #ffc107;
-            color: #333;
-            font-weight: bold;
-        }
-        .nav-left a.claim-btn:hover {
-            background-color: #e0a800;
-        }
-
         .container { max-width: 800px; margin: 20px auto; background: white; padding: 20px; border-radius: 8px; }
         .form-group { margin-bottom: 15px; }
-/* ... (existing styles) ... */
         .form-group label { display: block; margin-bottom: 5px; }
         .form-group input, .form-group textarea { width: 95%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         .btn { background: #007BFF; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
         .btn-danger { background-color: #DC3545; }
         .btn-danger:hover { background-color: #c82333; }
-        
-        /* --- Flash 消息 --- */
         .flash { padding: 15px; margin-bottom: 15px; border-radius: 4px; list-style-type: none; }
         .flash.success { background: #d4edda; color: #155724; }
         .flash.error { background: #f8d7da; color: #721c24; }
-        /* 邀请码样式 */
+        
+        /* 邀请码样式 (不变) */
         .invite-box { background: #f0f0f0; border: 1px dashed #ccc; padding: 15px; border-radius: 8px; text-align: center; }
         .invite-code { font-size: 2.5em; font-weight: bold; color: #333; letter-spacing: 3px; margin: 10px 0; }
+        
+        /* --- NEW: 日历和模态框 CSS --- */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+            border: 1px solid #ddd;
+            padding: 5px;
+            border-radius: 8px;
+        }
+        .calendar-header {
+            font-weight: bold;
+            text-align: center;
+            padding: 8px 0;
+            background: #f7f7f7;
+            border-bottom: 1px solid #ddd;
+        }
+        .calendar-day {
+            min-height: 100px;
+            border: 1px solid #eee;
+            padding: 8px;
+            border-radius: 4px;
+            background-color: #fafafa;
+            position: relative;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .calendar-day:hover { background-color: #f0f0f0; }
+        .calendar-day .day-number { font-size: 0.9em; font-weight: bold; }
+        .calendar-day.other-month { background-color: #fff; color: #ccc; }
+        
+        .entry-dots {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            display: flex;
+            gap: 4px;
+        }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .dot-me { background-color: #007BFF; }
+        .dot-partner { background-color: #28a745; }
+
+        /* 模态框 (Modal) */
+        .modal {
+            display: none; /* 默认隐藏 */
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            position: relative;
+        }
+        .modal-close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+        }
+        .modal-close:hover,
+        .modal-close:focus {
+            color: black;
+            text-decoration: none;
+        }
+        #journal-form textarea { width: 95%; height: 150px; }
+        .journal-entry-view { margin-bottom: 15px; }
+        .journal-entry-view strong { color: #007BFF; }
+        .journal-entry-view.partner { border-top: 1px dashed #ccc; padding-top: 15px; }
+        .journal-entry-view.partner strong { color: #28a745; }
+        /* --- CSS 结束 --- */
+
     </style>
 </head>
 <body>
     <nav>
         <div class="nav-left">
-            <!-- current_user 变量由 Flask-Login 提供 -->
             {% if current_user.is_authenticated %}
-                <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">我的菜谱</a>
+                <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">共享菜谱</a> <!-- NEW: 标题更新 -->
                 <a href="{{ url_for('add_recipe') }}" class="{{ 'active' if request.endpoint == 'add_recipe' else '' }}">添加新菜谱</a>
                 <a href="{{ url_for('what_can_i_make') }}" class="{{ 'active' if request.endpoint == 'what_can_i_make' else '' }}">我能做什么?</a>
-                <!-- NEW: 新的导航链接 -->
+                
                 <a href="{{ url_for('partner_page') }}" 
                    style="color: #4CAF50;" 
                    class="{{ 'active' if request.endpoint == 'partner_page' else '' }}">❤️ 我的伴侣</a>
-                
-              
+
+                <!-- NEW: 共享日记链接 -->
+                <a href="{{ url_for('journal') }}" 
+                   style="color: #ffc107;" 
+                   class="{{ 'active' if request.endpoint == 'journal' else '' }}">📅 共享日记</a>
+
             {% else %}
-                <a href="{{ url_for('login') }}">情侣菜谱 (请登录)</a>
+                <a href="{{ url_for('login') }}">情侣空间 (请登录)</a>
             {% endif %}
         </div>
-        <!-- ... (nav-right 导航栏不变) ... -->
         <div class="nav-right">
             {% if current_user.is_authenticated %}
                 <span>您好, {{ current_user.username }}</span>
@@ -89,7 +152,6 @@
         </div>
     </nav>
     
-    <!-- ... (container 和 block content 不变) ... -->
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
@@ -103,5 +165,157 @@
         
         {% block content %}{% endblock %}
     </div>
+
+    <!-- NEW: 日记模态框的 HTML (放在 .container 之外) -->
+    <div id="journalModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal()">&times;</span>
+            <h3 id="modal-title">...</h3>
+            
+            <!-- 模态框 - 查看模式 -->
+            <div id="journal-view">
+                <div id="view-me" class="journal-entry-view" style="display: none;">
+                    <strong>{{ current_user.username if current_user.is_authenticated else '我' }} 写道:</strong>
+                    <p id="view-me-content"></p>
+                </div>
+                <div id="view-partner" class="journal-entry-view partner" style="display: none;">
+                    <strong id="view-partner-name">... (TA) 写道:</strong>
+                    <p id="view-partner-content"></p>
+                </div>
+                <button id="edit-my-entry-btn" class="btn" onclick="openEditView()">编辑我的日记</button>
+            </div>
+
+            <!-- 模态框 - 编辑/新建 模式 -->
+            <div id="journal-edit" style="display: none;">
+                <form id="journal-form" onsubmit="return saveJournal()">
+                    <div class="form-group">
+                        <label for="journal-content">您在这一天的心情/日记:</label>
+                        <textarea id="journal-content" name="content" required></textarea>
+                        <input type="hidden" id="journal-date" name="date">
+                    </div>
+                    <button type="submit" class="btn">保存</button>
+                    <button type="button" class="btn btn-danger" onclick="closeModal()" style="background-color: #aaa;">取消</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- NEW: 模态框的 JavaScript (放在 </body> 之前) -->
+    <script>
+        const modal = document.getElementById('journalModal');
+        const modalTitle = document.getElementById('modal-title');
+        const journalView = document.getElementById('journal-view');
+        const journalEdit = document.getElementById('journal-edit');
+        const viewMe = document.getElementById('view-me');
+        const viewMeContent = document.getElementById('view-me-content');
+        const viewPartner = document.getElementById('view-partner');
+        const viewPartnerName = document.getElementById('view-partner-name');
+        const viewPartnerContent = document.getElementById('view-partner-content');
+        const editMyEntryBtn = document.getElementById('edit-my-entry-btn');
+        const journalFormContent = document.getElementById('journal-content');
+        const journalFormDate = document.getElementById('journal-date');
+
+        let currentModalDate = null;
+        let calendarData = {}; // 这个变量将在 journal.html 中被 Python 填充
+        
+        // (这个函数由 journal.html 中的按钮调用)
+        function openModal(dateStr, data) {
+            currentModalDate = dateStr;
+            journalFormDate.value = dateStr;
+            modalTitle.textContent = `日记: ${dateStr}`;
+            
+            // data 是从日历中传来的, 包含 me:bool, partner:bool, me_content, partner_content
+            
+            if (!data.me && !data.partner) {
+                // ---- 新建模式 ----
+                journalFormContent.value = ''; // 清空
+                journalView.style.display = 'none';
+                journalEdit.style.display = 'block';
+                editMyEntryBtn.textContent = '编辑我的日记'; // 重置按钮文本
+            } else {
+                // ---- 查看模式 ----
+                journalView.style.display = 'block';
+                journalEdit.style.display = 'none';
+
+                // 显示“我”的
+                if (data.me) {
+                    viewMe.style.display = 'block';
+                    viewMeContent.textContent = data.me_content;
+                    journalFormContent.value = data.me_content; // 预填编辑框
+                    editMyEntryBtn.style.display = 'inline-block';
+                    editMyEntryBtn.textContent = '编辑我的日记';
+                } else {
+                    viewMe.style.display = 'none';
+                    journalFormContent.value = ''; // 新建
+                    editMyEntryBtn.style.display = 'inline-block'; // 允许“写我的日记”
+                    editMyEntryBtn.textContent = '写我的日记';
+                }
+
+                // 显示“TA”的
+                if (data.partner) {
+                    viewPartner.style.display = 'block';
+                    // viewPartnerName 标签已在 journal.html 中被 Python 填充
+                    viewPartnerContent.textContent = data.partner_content;
+                } else {
+                    viewPartner.style.display = 'none';
+                }
+            }
+            
+            modal.style.display = 'block';
+        }
+
+        // (由“编辑我的日记”按钮调用)
+        function openEditView() {
+            modalTitle.textContent = `编辑日记: ${currentModalDate}`;
+            journalView.style.display = 'none';
+            journalEdit.style.display = 'block';
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+        }
+        
+        // (点击模态框外部关闭)
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+        
+        // (表单提交)
+        async function saveJournal() {
+            const date = journalFormDate.value;
+            const content = journalFormContent.value;
+            
+            try {
+                const response = await fetch("{{ url_for('add_journal_entry') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        date: date,
+                        content: content
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // alert(result.message); // "日记已保存"
+                    closeModal();
+                    // 刷新页面以更新日历
+                    window.location.reload(); 
+                } else {
+                    alert('错误: ' + result.message);
+                }
+            } catch (error) {
+                console.error('保存失败:', error);
+                alert('保存日记时发生网络错误。');
+            }
+            return false; // 阻止表单默认提交
+        }
+    </script>
 </body>
 </html>

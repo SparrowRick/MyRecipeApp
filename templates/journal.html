@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>📅 共享日记 (2025年 10月 - 模拟)</h2>
+    <p>
+        <!-- 
+          注意: "partner_name" 是由 app.py 中的 journal() 路由传递过来的
+          如果您的伴侣尚未绑定, app.py 会重定向到伴侣页面, 所以这里 partner_name 总是存在的
+        -->
+        在这里记录您和 <strong>{{ partner_name }}</strong> 的共同回忆。
+        <span class="dot dot-me" style="display: inline-block;"></span> = {{ current_user.username }} (我)
+        <span class="dot dot-partner" style="display: inline-block; margin-left: 10px;"></span> = {{ partner_name }} (TA)
+    </p>
+
+    <!-- 日历 -->
+    <div class="calendar-grid">
+        <!-- 星期 -->
+        <div class="calendar-header">日</div>
+        <div class="calendar-header">一</div>
+        <div class="calendar-header">二</div>
+        <div class="calendar-header">三</div>
+        <div class="calendar-header">四</div>
+        <div class="calendar-header">五</div>
+        <div class="calendar-header">六</div>
+        
+        <!--
+          这是一个“模拟”的日历 (2025年10月)。
+          一个“真正”的日历需要后端 Python (使用 calendar 库) 来动态生成每天的日期,
+          但为了 V3.0 的首次发布, 我们先用这个模拟的网格来展示数据。
+        -->
+
+        <!-- 第 1 行 (模拟 2025-10-01 是周三) -->
+        <div class="calendar-day other-month"><div class="day-number">28</div></div>
+        <div class="calendar-day other-month"><div class="day-number">29</div></div>
+        <div class="calendar-day other-month"><div class="day-number">30</div></div>
+        
+        {% set date_str = '2025-10-01' %}
+        <!-- 
+          1. 从 app.py 传来的 calendar_data 中获取当天的日记数据
+          2. .get(..., {...}) 是一个安全的操作, 如果当天没有日记, 它会返回一个空的默认字典
+          3. data | tojson 会把 Python 字典安全地转换为 JavaScript 对象
+        -->
+        {% set data = calendar_data.get(date_str, {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}) %}
+        <!-- FIX: Added |safe filter to prevent HTML-escaping of the JSON object. -->
+        <div class="calendar-day" onclick='openModal("{{ date_str }}", {{ data | tojson | safe }})'>
+            <div class="day-number">1</div>
+            <div class="entry-dots">
+                {% if data.me %}<span class="dot dot-me"></span>{% endif %}
+                {% if data.partner %}<span class="dot dot-partner"></span>{% endif %}
+            </div>
+        </div>
+        
+        {% set date_str = '2025-10-02' %}
+        {% set data = calendar_data.get(date_str, {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}) %}
+        <!-- FIX: Added |safe filter. -->
+        <div class="calendar-day" onclick='openModal("{{ date_str }}", {{ data | tojson | safe }})'>
+            <div class="day-number">2</div>
+            <div class="entry-dots">
+                {% if data.me %}<span class="dot dot-me"></span>{% endif %}
+                {% if data.partner %}<span class="dot dot-partner"></span>{% endif %}
+            </div>
+        </div>
+        
+        {% set date_str = '2025-10-03' %}
+        {% set data = calendar_data.get(date_str, {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}) %}
+        <!-- FIX: Added |safe filter. -->
+        <div class="calendar-day" onclick='openModal("{{ date_str }}", {{ data | tojson | safe }})'>
+            <div class="day-number">3</div>
+            <div class="entry-dots">
+                {% if data.me %}<span class="dot dot-me"></span>{% endif %}
+                {% if data.partner %}<span class="dot dot-partner"></span>{% endif %}
+            </div>
+        </div>
+
+        {% set date_str = '2025-10-04' %}
+        {% set data = calendar_data.get(date_str, {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}) %}
+        <!-- FIX: Added |safe filter. -->
+        <div class="calendar-day" onclick='openModal("{{ date_str }}", {{ data | tojson | safe }})'>
+            <div class="day-number">4</div>
+            <div class="entry-dots">
+                {% if data.me %}<span class="dot dot-me"></span>{% endif %}
+                {% if data.partner %}<span class="dot dot-partner"></span>{% endif %}
+            </div>
+        </div>
+
+        <!-- 
+          第 2 行开始, 我们用一个 for 循环来生成 5号 到 31号
+          (一个真正的日历会更复杂, 需要计算换行)
+        -->
+        
+        {% for day in range(5, 32) %}
+            <!-- 格式化日期字符串, e.g., "2025-10-05" (05 保证了两位数) -->
+            {% set date_str = '2025-10-%02d' | format(day) %}
+            {% set data = calendar_data.get(date_str, {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}) %}
+            
+            <!-- FIX: Added |safe filter. -->
+            <div class="calendar-day" onclick='openModal("{{ date_str }}", {{ data | tojson | safe }})'>
+                <div class="day-number">{{ day }}</div>
+                <div class="entry-dots">
+                    {% if data.me %}<span class="dot dot-me"></span>{% endif %}
+                    {% if data.partner %}<span class="dot dot-partner"></span>{% endif %}
+                </div>
+            </div>
+        {% endfor %}
+        
+        <!-- 下个月的 (模拟) -->
+        <div class="calendar-day other-month"><div class="day-number">1</div></div>
+
+    </div>
+
+    <!-- 
+      这个脚本块必须在 journal.html 中,
+      因为它需要把 Python 变量 (calendar_data 和 partner_name) 传递给 base.html 中的全局 JS
+    -->
+    <script>
+        // 1. 填充 JS 变量 (来自 base.html)
+        // (我们把 Python 字典转换为安全的 JSON 字符串, 然后 JS 再解析它)
+        // This part needs |safe because it's in a <script> tag, not an HTML attribute.
+        calendarData = {{ calendar_data | tojson | safe }};
+        
+        // 2. 更新模态框中的伴侣名字 (来自 base.html)
+        document.getElementById('view-partner-name').textContent = "{{ partner_name }} (TA) 写道:";
+    </script>
+
+{% endblock %}
