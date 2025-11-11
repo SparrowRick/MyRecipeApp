@@ -1,8 +1,8 @@
-"""V3.0 - Full Initial Schema with Journal
+"""V3.1 - Full Schema with Memories
 
-Revision ID: 844e32da00e4
+Revision ID: 317b2003bf14
 Revises: 
-Create Date: 2025-11-11 22:28:53.492337
+Create Date: 2025-11-11 22:40:11.858872
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '844e32da00e4'
+revision = '317b2003bf14'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -38,6 +38,17 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('date_str', 'author_id', name='_date_author_uc')
     )
+    op.create_table('memory',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('title', sa.String(length=150), nullable=False),
+    sa.Column('memory_date', sa.Date(), nullable=True),
+    sa.Column('location', sa.String(length=100), nullable=True),
+    sa.Column('content', sa.Text(), nullable=False),
+    sa.Column('image_file', sa.String(length=100), nullable=False),
+    sa.Column('author_id', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['author_id'], ['user.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('recipe',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
@@ -45,7 +56,8 @@ def upgrade():
     sa.Column('image_file', sa.String(length=100), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('name')
     )
     op.create_table('cooking_log',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -81,6 +93,7 @@ def downgrade():
     op.drop_table('ingredient')
     op.drop_table('cooking_log')
     op.drop_table('recipe')
+    op.drop_table('memory')
     op.drop_table('journal_entry')
     op.drop_table('user')
     # ### end Alembic commands ###

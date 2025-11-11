@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>💖 我们的纪念册</h2>
+        <a href="{{ url_for('add_memory') }}" class="btn">
+            + 添加新回忆
+        </a>
+    </div>
+    
+    <p>这里会显示您和您伴侣共同添加的所有美好回忆。</p>
+    
+    <!-- V3.1: 纪念册卡片网格 -->
+    <div class="memories-grid" style="margin-top: 20px;">
+        
+        {% for memory in memories %}
+            <!-- 
+              我们用 <a> 标签包裹卡片, 使其可以点击
+              卡片的 CSS 样式在 base.html 中定义
+            -->
+            <a href="{{ url_for('memory_detail', memory_id=memory.id) }}" class="memory-card">
+                <img src="{{ url_for('static', filename='uploads/' + memory.image_file) }}" alt="{{ memory.title }}">
+                <div class="memory-card-content">
+                    <h3>{{ memory.title }}</h3>
+                    <div class="memory-card-meta">
+                        <!-- 
+                          如果 memory_date (日期) 存在, 格式化它
+                          strftime('%Y年%m月%d日')
+                        -->
+                        {% if memory.memory_date %}
+                            <span>{{ memory.memory_date.strftime('%Y年%m月%d日') }}</span>
+                        {% endif %}
+                        {% if memory.location %}
+                            <span>· {{ memory.location }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="memory-card-author">
+                        (由 
+                        {% if memory.author_id == current_user.id %}
+                            <strong style="color: #007BFF;">我</strong>
+                        {% else %}
+                            <strong style="color: #28a745;">{{ memory.author.username }}</strong>
+                        {% endif %}
+                        添加)
+                    </div>
+                </div>
+            </a>
+        {% else %}
+            <p>您们还没有添加任何回忆。 <a href="{{ url_for('add_memory') }}">马上去添加第一个！</a></p>
+        {% endfor %}
+        
+    </div>
+{% endblock %}

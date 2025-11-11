@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>+ 添加新回忆</h2>
+    
+    <!-- 
+      这个表单和 add_recipe.html 几乎一样
+      注意: 必须加 enctype="multipart/form-data" 来上传图片
+    -->
+    <form action="{{ url_for('add_memory') }}" method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="title">回忆标题:</label>
+            <input type="text" id="title" name="title" placeholder="例如: 第一次旅行" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="image">上传照片 (可选):</label>
+            <!-- 
+              注意: 这里的 name="image" 必须和 app.py 中 
+              request.files['image'] 匹配
+            -->
+            <input type="file" id="image" name="image" accept="image/png, image/jpeg, image/gif">
+        </div>
+        
+        <div style="display: flex; gap: 20px;">
+            <div class="form-group" style="flex: 1;">
+                <label for="memory_date">日期 (可选):</label>
+                <!-- 
+                  HTML 的 type="date" 会提供一个日期选择器
+                  它会以 YYYY-MM-DD 的格式提交
+                -->
+                <input type="date" id="memory_date" name="memory_date">
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label for="location">地点 (可选):</label>
+                <input type="text" id="location" name="location" placeholder="例如: 海边">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="content">回忆故事:</label>
+            <textarea id="content" name="content" rows="10" placeholder="那天发生了什么..." required></textarea>
+        </div>
+        
+        <button type="submit" class="btn">保存回忆</button>
+    </form>
+{% endblock %}
