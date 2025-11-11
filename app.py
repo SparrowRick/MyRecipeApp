@@ -5,6 +5,8 @@ import datetime
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+import string # NEW: 用于生成邀请码
+import secrets # NEW: 用于生成邀请码
 # NEW: 导入 Migrate
 from flask_migrate import Migrate
 
@@ -42,6 +44,20 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     
     recipes = db.relationship('Recipe', backref='author', lazy=True)
+    # --- NEW: 情侣关联 ---
+    # 邀请码 (一次性, 6位)
+    invite_code = db.Column(db.String(6), unique=True, nullable=True) 
+    # 指向伴侣的 User.id
+    partner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) 
+    
+    # 建立一个“虚拟”的 partner 关系, 方便查询
+    # (这是一个复杂的关系: 1对1, 且指向自己)
+    partner = db.relationship(
+        'User', 
+        remote_side=[id], # 远程的 ID
+        primaryjoin=partner_id == id, # 本地的 partner_id == 远程的 id
+        uselist=False # 关系只返回一个人, 而不是列表
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -367,6 +383,87 @@ def what_can_i_make():
                            partial_matches=partial_matches,
                            pantry_input=pantry_input,
                            has_searched=request.method == 'POST')
+@app.route('/partner', methods=['GET'])
+@login_required
+def partner_page():
+    # 查找您的伴侣 (通过 User.partner 关系)
+    partner = current_user.partner
+    return render_template('partner.html', partner=partner, invite_code=current_user.invite_code)
+
+@app.route('/partner/generate_code', methods=['POST'])
+@login_required
+def generate_invite_code():
+    # 如果已有伴侣, 不允许生成
+    if current_user.partner_id:
+        flash('您已经绑定了伴侣。', 'error')
+        return redirect(url_for('partner_page'))
+    
+    # 如果已有邀请码, 不重新生成
+    if current_user.invite_code:
+        flash(f'您已有一个邀请码: {current_user.invite_code}', 'info')
+        return redirect(url_for('partner_page'))
+
+    # 生成一个6位的、不重复的 字母+数字 邀请码
+    while True:
+        alphabet = string.ascii_uppercase + string.digits
+        new_code = ''.join(secrets.choice(alphabet) for i in range(6))
+        # 检查这个码是否已存在
+        existing_code = User.query.filter_by(invite_code=new_code).first()
+        if not existing_code:
+            break # 找到了唯一的码
+    
+    current_user.invite_code = new_code
+    try:
+        db.session.commit()
+        flash(f'您的专属邀请码是: {new_code}。请让您的伴侣用它来绑定。', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'生成邀请码时出错: {e}', 'error')
+        
+    return redirect(url_for('partner_page'))
+
+@app.route('/partner/redeem_code', methods=['POST'])
+@login_required
+def redeem_invite_code():
+    code_to_redeem = request.form['invite_code'].strip().upper()
+    
+    # 1. 检查自己
+    if not code_to_redeem:
+        flash('请输入邀请码。', 'error')
+        return redirect(url_for('partner_page'))
+    if current_user.partner_id:
+        flash('您已经绑定了伴侣。', 'error')
+        return redirect(url_for('partner_page'))
+        
+    # 2. 查找邀请码
+    user_with_code = User.query.filter_by(invite_code=code_to_redeem).first()
+    
+    if not user_with_code:
+        flash('邀请码无效或不存在。', 'error')
+        return redirect(url_for('partner_page'))
+        
+    # 3. 不能自己邀请自己
+    if user_with_code.id == current_user.id:
+        flash('您不能和自己绑定！', 'error')
+        return redirect(url_for('partner_page'))
+
+    # 4. (成功) 互相绑定
+    try:
+        # 绑定 A -> B
+        user_with_code.partner_id = current_user.id
+        # 绑定 B -> A
+        current_user.partner_id = user_with_code.id
+        # 消耗掉邀请码 (设为 None)
+        user_with_code.invite_code = None
+        
+        db.session.commit()
+        flash(f'成功！您已和 {user_with_code.username} 绑定为情侣。', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'绑定时发生错误: {e}', 'error')
+
+    return redirect(url_for('partner_page'))
 
 # --- 启动器 ---
 if __name__ == '__main__':

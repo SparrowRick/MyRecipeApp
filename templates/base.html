@@ -54,6 +54,9 @@
         .flash { padding: 15px; margin-bottom: 15px; border-radius: 4px; list-style-type: none; }
         .flash.success { background: #d4edda; color: #155724; }
         .flash.error { background: #f8d7da; color: #721c24; }
+        /* 邀请码样式 */
+        .invite-box { background: #f0f0f0; border: 1px dashed #ccc; padding: 15px; border-radius: 8px; text-align: center; }
+        .invite-code { font-size: 2.5em; font-weight: bold; color: #333; letter-spacing: 3px; margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -64,6 +67,10 @@
                 <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">我的菜谱</a>
                 <a href="{{ url_for('add_recipe') }}" class="{{ 'active' if request.endpoint == 'add_recipe' else '' }}">添加新菜谱</a>
                 <a href="{{ url_for('what_can_i_make') }}" class="{{ 'active' if request.endpoint == 'what_can_i_make' else '' }}">我能做什么?</a>
+                <!-- NEW: 新的导航链接 -->
+                <a href="{{ url_for('partner_page') }}" 
+                   style="color: #4CAF50;" 
+                   class="{{ 'active' if request.endpoint == 'partner_page' else '' }}">❤️ 我的伴侣</a>
                 
               
             {% else %}

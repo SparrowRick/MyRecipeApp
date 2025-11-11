@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>❤️ 我的伴侣</h2>
+    
+    <p>这是您与伴侣的连接中心。您们必须互相绑定后才能使用共享功能（如共享日记）。</p>
+
+    <hr>
+
+    <!-- 
+      情况一: 您已经成功绑定了伴侣
+      (current_user.partner 是我们在 User 模型中定义的“虚拟”关系)
+    -->
+    {% if current_user.partner %}
+        <div class="invite-box">
+            <h3>您已绑定成功！</h3>
+            <p>您当前的伴侣是: <strong>{{ current_user.partner.username }}</strong></p>
+            <p style="color: #555;">(未来您可以在这里管理共享设置)</p>
+        </div>
+    
+    <!-- 
+      情况二: 您还没有绑定伴侣
+    -->
+    {% else %}
+        
+        <!-- 2a. 生成您自己的邀请码 -->
+        <h3>第一步: 生成您的邀请码</h3>
+        <p>您需要生成一个邀请码，让您的伴侣来兑换。或者，您也可以兑换您伴侣的邀请码。</p>
+        
+        <!-- 如果您已经生成了邀请码 -->
+        {% if current_user.invite_code %}
+            <div class="invite-box">
+                <p>您的专属邀请码是 (请勿泄露给第三人):</p>
+                <!-- 我们在 base.html 中添加一些样式 -->
+                <style>
+                    .invite-box { background: #f0f0f0; border: 1px dashed #ccc; padding: 15px; border-radius: 8px; text-align: center; }
+                    .invite-code { font-size: 2.5em; font-weight: bold; color: #333; letter-spacing: 3px; margin: 10px 0; }
+                </style>
+                <div class="invite-code">{{ current_user.invite_code }}</div>
+                <p style="color: #555;">(您的伴侣登录后, 在同一页面输入此代码即可)</p>
+            </div>
+        
+        <!-- 如果您还没有邀请码 -->
+        {% else %}
+            <form action="{{ url_for('generate_invite_code') }}" method="POST">
+                <button type="submit" class="btn">生成我的邀请码</button>
+            </form>
+        {% endif %}
+
+        <br>
+        
+        <!-- 2b. 兑换您伴侣的邀请码 -->
+        <h3>第二步: 兑换伴侣的邀请码</h3>
+        <p>如果您伴侣已经生成了邀请码, 请在这里输入:</p>
+        
+        <form action="{{ url_for('redeem_invite_code') }}" method="POST">
+            <div class="form-group">
+                <label for="invite_code">请输入6位邀请码:</label>
+                <input type="text" id="invite_code" name="invite_code" 
+                       style="text-transform: uppercase; letter-spacing: 2px; text-align: center;" 
+                       maxlength="6" required>
+            </div>
+            <button type="submit" class="btn">绑定伴侣</button>
+        </form>
+    
+    {% endif %}
+
+{% endblock %}

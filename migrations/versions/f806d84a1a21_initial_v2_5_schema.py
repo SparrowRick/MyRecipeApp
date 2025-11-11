@@ -1,8 +1,8 @@
-"""Initial V2 database setup
+"""Initial V2.5 schema
 
-Revision ID: b697c4d4d208
+Revision ID: f806d84a1a21
 Revises: 
-Create Date: 2025-11-11 20:41:28.197438
+Create Date: 2025-11-11 21:48:10.686034
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'b697c4d4d208'
+revision = 'f806d84a1a21'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -22,7 +22,11 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('username', sa.String(length=80), nullable=False),
     sa.Column('password_hash', sa.String(length=200), nullable=False),
+    sa.Column('invite_code', sa.String(length=6), nullable=True),
+    sa.Column('partner_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['partner_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('invite_code'),
     sa.UniqueConstraint('username')
     )
     op.create_table('recipe',
@@ -30,7 +34,7 @@ def upgrade():
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('instructions', sa.Text(), nullable=True),
     sa.Column('image_file', sa.String(length=100), nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.Column('user_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
