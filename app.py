@@ -65,7 +65,7 @@ class Recipe(db.Model):
     # NEW: 外键, 关联到 User 表
     # CRITICAL CHANGE: nullable=False 变为 nullable=True
     # 这允许您的旧菜谱在迁移过程中暂时没有主人
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     
     # ... (relationships 不变) ...
     ingredients = db.relationship('Ingredient', backref='recipe', lazy=True, cascade="all, delete-orphan")
@@ -367,32 +367,6 @@ def what_can_i_make():
                            partial_matches=partial_matches,
                            pantry_input=pantry_input,
                            has_searched=request.method == 'POST')
-
-
-# --- NEW: 一次性认领路由 ---
-@app.route('/claim_recipes')
-@login_required
-def claim_recipes():
-    # 这是一个一次性使用的路由，用于查找所有“孤儿”菜谱（user_id 为空）
-    # 并将它们的主人设置为当前登录的用户
-    orphaned_recipes = Recipe.query.filter_by(user_id=None).all()
-    
-    if not orphaned_recipes:
-        flash('没有找到需要认领的旧菜谱。', 'info')
-        return redirect(url_for('index'))
-    
-    for recipe in orphaned_recipes:
-        recipe.user_id = current_user.id
-    
-    try:
-        db.session.commit()
-        flash(f'成功！您已将 {len(orphaned_recipes)} 道旧菜谱认领到您的账户下。', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'认领时发生错误: {e}', 'error')
-    
-    return redirect(url_for('index'))
-
 
 # --- 启动器 ---
 if __name__ == '__main__':

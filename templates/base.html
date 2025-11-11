@@ -65,9 +65,7 @@
                 <a href="{{ url_for('add_recipe') }}" class="{{ 'active' if request.endpoint == 'add_recipe' else '' }}">添加新菜谱</a>
                 <a href="{{ url_for('what_can_i_make') }}" class="{{ 'active' if request.endpoint == 'what_can_i_make' else '' }}">我能做什么?</a>
                 
-                <!-- NEW: 临时认领链接, 迁移数据后您可以删除这一行 -->
-                <a href="{{ url_for('claim_recipes') }}" class="claim-btn">⭐ 认领旧菜谱 ⭐</a>
-
+              
             {% else %}
                 <a href="{{ url_for('login') }}">情侣菜谱 (请登录)</a>
             {% endif %}
