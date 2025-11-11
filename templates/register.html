@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>注册新账户</h2>
+    <p>创建您的私人菜谱空间。</p>
+    <form action="{{ url_for('register') }}" method="POST" style="max-width: 400px;">
+        <div class="form-group">
+            <label for="username">用户名:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        <div class="form-group">
+            <label for="password">密码:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn">注册</button>
+        <a href="{{ url_for('login') }}" style="margin-left: 15px;">已有账户? 去登录</a>
+    </form>
+{% endblock %}
