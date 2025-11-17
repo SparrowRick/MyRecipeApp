@@ -68,6 +68,60 @@
         .memory-card-content h3 { margin: 0 0 8px 0; font-size: 1.2em; }
         .memory-card-meta { font-size: 0.9em; color: #666; margin-bottom: 10px; }
         .memory-card-author { font-size: 0.8em; color: #999; }
+        
+        /* --- V3.2 NEW: 愿望清单样式 --- */
+        .wishlist-form { display: flex; gap: 10px; margin-bottom: 20px; }
+        .wishlist-form input { flex-grow: 1; /* 占据剩余空间 */ }
+        .wishlist-container { display: flex; flex-direction: column; md:flex-direction: row; gap: 20px; }
+        .wishlist-column { flex: 1; }
+        .wishlist-column h3 { border-bottom: 2px solid #eee; padding-bottom: 8px; }
+        .wishlist-item { 
+            display: flex; 
+            align-items: center; 
+            padding: 10px; 
+            border-bottom: 1px solid #f0f0f0;
+            justify-content: space-between;
+        }
+        .wishlist-item.completed span { 
+            text-decoration: line-through; 
+            color: #999; 
+        }
+        .wishlist-item-content {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+        }
+        .wishlist-item-content span {
+            margin-left: 10px;
+        }
+        .wishlist-item-content .author-tag {
+            font-size: 0.8em;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+        }
+        .wishlist-item-content .author-me { background-color: #007BFF; }
+        .wishlist-item-content .author-partner { background-color: #28a745; }
+        
+        .wishlist-item .actions {
+            display: flex;
+            gap: 10px;
+        }
+        /* (复用 .btn 样式, 但使其更小) */
+        .wishlist-item .btn-sm {
+            padding: 5px 8px;
+            font-size: 0.9em;
+        }
+        .wishlist-item .btn-delete-sm {
+            background: #aaa;
+            padding: 5px 8px;
+            font-size: 0.9em;
+        }
+        .wishlist-item .btn-delete-sm:hover {
+            background: #DC3545;
+        }
+
     </style>
 </head>
 <body>
@@ -76,23 +130,23 @@
     <nav>
         <div class="nav-left">
             {% if current_user.is_authenticated %}
-                <!-- V3.0 (共享菜谱) -->
                 <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">共享菜谱</a> 
                 
-                <!-- V3.1 (纪念册) -->
                 <a href="{{ url_for('memories') }}" 
                    style="color: #f43f5e;" 
                    class="{{ 'active' if request.endpoint.startswith('memories') or request.endpoint.startswith('memory_') else '' }}">💖 纪念册</a>
                 
-                <!-- V1 (保留) -->
+                <!-- V3.2 NEW: 愿望清单链接 -->
+                <a href="{{ url_for('wishlist') }}"
+                   style="color: #6f42c1;" 
+                   class="{{ 'active' if request.endpoint.startswith('wishlist') else '' }}">🌠 愿望清单</a>
+
                 <a href="{{ url_for('what_can_i_make') }}" class="{{ 'active' if request.endpoint == 'what_can_i_make' else '' }}">我能做什么?</a>
                 
-                <!-- V2.5 (情侣关联) -->
                 <a href="{{ url_for('partner_page') }}" 
                    style="color: #4CAF50;" 
                    class="{{ 'active' if request.endpoint.startswith('partner_') else '' }}">❤️ 我的伴侣</a>
                 
-                <!-- V3.0 (共享日记) -->
                 <a href="{{ url_for('journal') }}" 
                    style="color: #ffc107;" 
                    class="{{ 'active' if request.endpoint.startswith('journal') else '' }}">📅 共享日记</a>
@@ -114,7 +168,7 @@
     <!-- 主内容区 -->
     <div class="container">
         
-        <!-- Flash 消息 -->
+        <!-- Flash 消息 (不变) -->
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             <ul class="flash-messages">
@@ -125,39 +179,26 @@
           {% endif %}
         {% endwith %}
         
-        <!-- 
-          子模板 (index.html, login.html 等) 的内容
-          将在这里被插入
-        -->
         {% block content %}{% endblock %}
     </div>
 
-    <!-- 
-      V3.0/V3.2
-      共享日记模态框 (Modal) 
-      它放在 base.html 中, 这样 journal.html 页面就可以调用它
-    -->
+    <!-- 日记模态框 (Modal) (不变) -->
     <div id="journalModal" class="modal">
+        <!-- ... (模态框 HTML 不变) ... -->
         <div class="modal-content">
             <span class="modal-close" onclick="closeModal()">&times;</span>
             <h3 id="modal-title">...</h3>
-            
-            <!-- 查看视图 -->
             <div id="journal-view">
-                <!-- 我的日记 -->
                 <div id="view-me" class="journal-entry-view" style="display: none;">
                     <strong>{{ current_user.username if current_user.is_authenticated else '我' }} 写道:</strong>
                     <p id="view-me-content"></p>
                 </div>
-                <!-- 伴侣的日记 -->
                 <div id="view-partner" class="journal-entry-view partner" style="display: none;">
                     <strong id="view-partner-name">... (TA) 写道:</strong>
                     <p id="view-partner-content"></p>
                 </div>
                 <button id="edit-my-entry-btn" class="btn" onclick="openEditView()">编辑我的日记</button>
             </div>
-            
-            <!-- 编辑/新建视图 -->
             <div id="journal-edit" style="display: none;">
                 <form id="journal-form" onsubmit="return saveJournal()">
                     <div class="form-group">
@@ -172,13 +213,10 @@
         </div>
     </div>
     
-    <!-- 
-      V3.0/V3.2
-      模态框 (Modal) 的 JavaScript
-      (已修复 SyntaxError)
-    -->
+    <!-- 日记模态框的 JavaScript (不变) -->
     <script>
         const modal = document.getElementById('journalModal');
+        // ... (所有 JS 变量和函数, openModal, closeModal, saveJournal 等保持不变) ...
         const modalTitle = document.getElementById('modal-title');
         const journalView = document.getElementById('journal-view');
         const journalEdit = document.getElementById('journal-edit');
@@ -192,48 +230,37 @@
         const journalFormDate = document.getElementById('journal-date');
         let currentModalDate = null;
         
-        // FIX (V4): openModal 现在读取 'element' (this)
-        // 这个函数会从被点击的日历格子 (element) 的 data-* 属性中读取数据
         function openModal(element) {
-            // 从 <body> 标签获取伴侣名字 (由 journal.html 设置)
             const partnerName = document.body.dataset.partnerName || 'TA';
             viewPartnerName.textContent = `${partnerName} (TA) 写道:`;
-            
-            // 从被点击的 <div> 元素中读取 data-* 属性
             const data = element.dataset;
             const dateStr = data.date;
             const hasMe = (data.me === 'true');
             const hasPartner = (data.partner === 'true');
             const meContent = data.meContent || '';
             const partnerContent = data.partnerContent || '';
-
             currentModalDate = dateStr;
             journalFormDate.value = dateStr;
             modalTitle.textContent = `日记: ${dateStr}`;
-
             if (!hasMe && !hasPartner) {
-                // 1. 没有人写过, 打开"编辑"视图
                 journalFormContent.value = ''; 
                 journalView.style.display = 'none';
                 journalEdit.style.display = 'block';
             } else {
-                // 2. 至少有一人写过, 打开"查看"视图
                 journalView.style.display = 'block';
                 journalEdit.style.display = 'none';
-                
                 if (hasMe) {
                     viewMe.style.display = 'block';
                     viewMeContent.textContent = meContent;
-                    journalFormContent.value = meContent; // 预填充"编辑"框
+                    journalFormContent.value = meContent; 
                     editMyEntryBtn.style.display = 'inline-block';
                     editMyEntryBtn.textContent = '编辑我的日记';
                 } else {
                     viewMe.style.display = 'none';
-                    journalFormContent.value = ''; // "编辑"框为空
+                    journalFormContent.value = ''; 
                     editMyEntryBtn.style.display = 'inline-block'; 
                     editMyEntryBtn.textContent = '写我的日记';
                 }
-                
                 if (hasPartner) {
                     viewPartner.style.display = 'block';
                     viewPartnerContent.textContent = partnerContent;
@@ -243,7 +270,6 @@
             }
             modal.style.display = 'block';
         }
-        
         function openEditView() {
             modalTitle.textContent = `编辑日记: ${currentModalDate}`;
             journalView.style.display = 'none';
@@ -257,14 +283,10 @@
                 closeModal();
             }
         }
-        
-        // saveJournal 函数 (V3.0)
-        // 它会异步地 (async) 将日记数据 POST 到 /journal/add
         async function saveJournal() {
             const date = journalFormDate.value;
             const content = journalFormContent.value;
             try {
-                // 发送 AJAX (Fetch) 请求到 app.py
                 const response = await fetch("{{ url_for('add_journal_entry') }}", {
                     method: 'POST',
                     headers: {
@@ -279,7 +301,6 @@
                 const result = await response.json();
                 if (response.ok) {
                     closeModal();
-                    // 刷新页面以显示新的日记圆点
                     window.location.reload(); 
                 } else {
                     alert('错误: ' + result.message);
@@ -288,7 +309,7 @@
                 console.error('保存失败:', error);
                 alert('保存日记时发生网络错误。');
             }
-            return false; // 阻止表单的默认提交
+            return false; 
         }
     </script>
 </body>

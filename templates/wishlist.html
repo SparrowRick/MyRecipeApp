@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>🌠 共享愿望清单</h2>
+    <p>添加您和 <strong>{{ current_user.partner.username if current_user.partner else 'TA' }}</strong> 想一起完成的事情！</p>
+
+    <!-- 添加新愿望的表单 -->
+    <form action="{{ url_for('add_wish') }}" method="POST" class="wishlist-form">
+        <div class="form-group" style="flex-grow: 1; margin-bottom: 0;">
+            <input type="text" id="content" name="content" placeholder="例如: 一起去旅行..." required>
+        </div>
+        <button type="submit" class="btn">添加愿望</button>
+    </form>
+    
+    <hr>
+
+    <!-- 清单容器 -->
+    <div class="wishlist-container">
+        
+        <!-- 待办列 -->
+        <div class="wishlist-column">
+            <h3>📝 待办清单</h3>
+            <ul class="wishlist">
+                {% for item in todo_wishes %}
+                    <li class="wishlist-item">
+                        <div class="wishlist-item-content">
+                            <!-- 
+                              "完成" 按钮
+                              这是一个表单, 它 POST 到 'toggle_wish' 路由
+                            -->
+                            <form action="{{ url_for('toggle_wish', item_id=item.id) }}" method="POST" style="margin: 0;">
+                                <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 1.5em; margin-right: 5px;" title="标记为已完成">✅</button>
+                            </form>
+                            <span>{{ item.content }}</span>
+                            <!-- 作者标签 -->
+                            {% if item.author_id == current_user.id %}
+                                <span class="author-tag author-me">我</span>
+                            {% else %}
+                                <span class="author-tag author-partner">TA</span>
+                            {% endif %}
+                        </div>
+                        <div class="actions">
+                            <!-- 只有作者才能删除 -->
+                            {% if item.author_id == current_user.id %}
+                                <form action="{{ url_for('delete_wish', item_id=item.id) }}" method="POST" onsubmit="return confirm('您确定要删除这个愿望吗？');">
+                                    <button type="submit" class="btn btn-delete-sm" title="删除">❌</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </li>
+                {% else %}
+                    <li>还没有待办的愿望。</li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <!-- 已完成列 -->
+        <div class="wishlist-column">
+            <h3>🎉 已完成！</h3>
+            <ul class="wishlist">
+                {% for item in done_wishes %}
+                    <li class="wishlist-item completed">
+                        <div class="wishlist-item-content">
+                            <!-- 
+                              "撤销" 按钮
+                              它和 "完成" 按钮指向同一个 'toggle_wish' 路由
+                            -->
+                            <form action="{{ url_for('toggle_wish', item_id=item.id) }}" method="POST" style="margin: 0;">
+                                <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 1.5em; margin-right: 5px;" title="标记为未完成">⏪</button>
+                            </form>
+                            <span>{{ item.content }}</span>
+                            <!-- 作者标签 -->
+                            {% if item.author_id == current_user.id %}
+                                <span class="author-tag author-me">我</span>
+                            {% else %}
+                                <span class="author-tag author-partner">TA</span>
+                            {% endif %}
+                        </div>
+                        <div class="actions">
+                            <!-- 只有作者才能删除 -->
+                            {% if item.author_id == current_user.id %}
+                                <form action="{{ url_for('delete_wish', item_id=item.id) }}" method="POST" onsubmit="return confirm('您确定要删除这个愿望吗？');">
+                                    <button type="submit" class="btn btn-delete-sm" title="删除">❌</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </li>
+                {% else %}
+                    <li>还没有已完成的愿望。</li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+    </div>
+{% endblock %}
