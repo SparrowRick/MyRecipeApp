@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+    
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">共享菜谱</h1>
+        <a href="{{ url_for('add_recipe') }}" class="bg-rose-500 text-white px-4 py-2 rounded-lg shadow-md hover:bg-rose-600 transition-all flex items-center">
+            <i data-lucide="plus" class="w-5 h-5 mr-1"></i> 添加新菜谱
+        </a>
+    </div>
+    
+    <p class="text-gray-600 mb-6">这里会显示您和您伴侣添加的所有菜谱。</p>
+
+    <!-- V4.0: 新的 Tailwind 菜谱列表 -->
+    <div class="bg-white rounded-xl shadow-lg p-6">
+        <ul class="divide-y divide-gray-200">
+            {% for recipe in recipes %}
+                <li class="py-4 flex justify-between items-center">
+                    <div>
+                        <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}" class="text-lg font-semibold text-gray-800 hover:text-rose-500">
+                            {{ recipe.name }}
+                        </a>
+                        <p class="text-sm text-gray-500">
+                            (由 
+                            {% if recipe.author_id == current_user.id %}
+                                <strong style="color: #007BFF;">我</strong>
+                            {% else %}
+                                <strong style="color: #28a745;">{{ recipe.author.username }}</strong>
+                            {% endif %}
+                            添加)
+                        </p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
+                </li>
+            {% else %}
+                <li class="py-4 text-center text-gray-500">
+                    您和您的伴侣还没有添加任何菜谱。
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+    
+    <!-- 确保 Lucide 图标被渲染 -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        });
+    </script>
+{% endblock %}

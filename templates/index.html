@@ -1,46 +1,111 @@
 {% extends "base.html" %}
 {% block content %}
-    <h2>📅 共享菜谱列表</h2>
-    <p>这里会显示您和您伴侣添加的所有菜谱。</p>
     
-    <ul class="recipe-list">
-        {% for recipe in recipes %}
-            <li>
-                <!-- 菜谱名称链接 -->
-                <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}">{{ recipe.name }}</a>
-                
-                <!-- NEW: 显示作者 -->
-                <span style="font-size: 0.9em; color: #555; margin-left: 10px;">
-                    (由 
-                    {% if recipe.author_id == current_user.id %}
-                        <strong style="color: #007BFF;">我</strong>
-                    {% else %}
-                        <strong style="color: #28a745;">{{ recipe.author.username }}</strong>
-                    {% endif %}
-                    添加)
-                </span>
-            </li>
-        {% else %}
-            <li>您和您的伴侣还没有添加任何菜谱。</li>
-            <li><a href="{{ url_for('add_recipe') }}" class="btn">去添加第一道菜谱！</a></li>
-        {% endfor %}
-    </ul>
-    
-    <!-- 确保样式在 base.html 中 (我们已经添加了) -->
-    <style>
-        .recipe-list li { 
-            margin-bottom: 12px; 
-            padding-bottom: 8px;
-            border-bottom: 1px solid #eee;
-            font-size: 1.1em;
+    <!-- V4.0: “在一起” 计数器 -->
+    <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg text-center">
+        <h1 class="text-3xl md:text-4xl font-bold text-rose-600">
+            我们在一起的第 <span id="anniversary-days" class="text-rose-400">...</span> 天
+        </h1>
+        <p class="text-gray-600 mt-2">接下来的日子也要一起走过！</p>
+    </div>
+
+    <!-- V4.0: 快捷入口 -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+        
+        <!-- 链接到 纪念册 -->
+        <a href="{{ url_for('memories') }}" class="shortcut-card">
+            <i data-lucide="gallery-thumbnails" class="w-10 h-10"></i>
+            <span>纪念册</span>
+        </a>
+        
+        <!-- 链接到 愿望清单 -->
+        <a href="{{ url_for('wishlist') }}" class="shortcut-card">
+            <i data-lucide="list-checks" class="w-10 h-10"></i>
+            <span>愿望清单</span>
+        </a>
+        
+        <!-- 链接到 共享日记 -->
+        <a href="{{ url_for('journal') }}" class="shortcut-card">
+            <i data-lucide="book-heart" class="w-10 h-10"></i>
+            <span>共享日记</span>
+        </a>
+        
+        <!-- V4.0: 链接到新的菜谱列表 -->
+        <a href="{{ url_for('recipes_list') }}" class="shortcut-card">
+            <i data-lucide="utensils-crossed" class="w-10 h-10"></i>
+            <span>共享菜谱</span>
+        </a>
+        
+        <style>
+            .shortcut-card {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 24px;
+                background-color: white;
+                border-radius: 12px;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+                font-weight: 600;
+                color: #be185d; /* 玫瑰红-700 */
+                transition: all 0.2s;
+            }
+            .shortcut-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 8px 15px rgba(0,0,0,0.08);
+                background-color: #fff1f2; /* 玫瑰红-50 */
+            }
+            .shortcut-card i {
+                margin-bottom: 12px;
+            }
+        </style>
+    </div>
+
+    <!-- V4.0: 模拟的“最近动态” -->
+    <div class="mt-8">
+        <h2 class="text-2xl font-bold mb-4">最近动态</h2>
+        <div class="bg-white rounded-xl shadow-lg p-6 space-y-4">
+            
+            <!-- (这是一个静态模拟, V4.1 我们可以让它活起来) -->
+            
+            <div class="border-l-4 border-rose-400 pl-4">
+                <p class="font-semibold">TA 添加了新菜谱: "可乐五花肉"</p>
+                <span class="text-sm text-gray-500">2小时前</span>
+            </div>
+            <div class="border-l-4 border-blue-400 pl-4">
+                <p class="font-semibold">你 添加了新回忆: "周末的公园散步"</p>
+                <span class="text-sm text-gray-500">昨天</span>
+            </div>
+            <div class="border-l-4 border-emerald-400 pl-4">
+                <p class="font-semibold">我们完成了愿望: "一起看一场日出"</p>
+                <span class="text-sm text-gray-500">3天前</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- V4.0: 计数器 JS (和原型一样) -->
+    <script>
+        // 4. 首页天数统计
+        function updateAnniversaryCounter() {
+            // (请)替换成你们的真实纪念日!
+            // 示例: 2020年1月1日
+            const startDate = new Date('2024-05-01T00:00:00'); 
+            const today = new Date();
+            
+            const diffTime = Math.abs(today - startDate);
+            // +1 是因为第一天也算
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; 
+            
+            const daysElement = document.getElementById('anniversary-days');
+            if (daysElement) {
+                daysElement.textContent = diffDays;
+            }
         }
-        .recipe-list li a {
-            text-decoration: none;
-            color: #333;
-            font-weight: bold;
-        }
-        .recipe-list li a:hover {
-            text-decoration: underline;
-        }
-    </style>
+
+        // 页面加载时运行
+        document.addEventListener('DOMContentLoaded', () => {
+            // 更新天数
+            updateAnniversaryCounter();
+        });
+    </script>
 {% endblock %}
