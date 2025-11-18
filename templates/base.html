@@ -3,136 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我们的小窝</title>
-    <!-- V4.0: 加载 Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- V4.0: 加载 Lucide Icons -->
+    <title>情侣空间</title>
+    
+    <!-- 
+      V4.3 FIX: 替换为国内 Staticfile CDN (Tailwind CSS v2.2.19) 
+      这比官网的 CDN 快得多，且不会被墙。
+    -->
+    <link href="https://cdn.staticfile.org/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    
+    <!-- 加载 Lucide Icons (图标) -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    
     <style>
-        /* V4.0: 基础字体和背景 */
+        /* --- V4.3 FIX: 修复 Tailwind 的 "Preflight" 重置 --- */
+        /* Tailwind 会把所有标题变得和正文一样大，这里我们手动恢复它们 */
+        h1 { font-size: 2em; font-weight: bold; margin-bottom: 0.67em; }
+        h2 { font-size: 1.5em; font-weight: bold; margin-bottom: 0.75em; }
+        h3 { font-size: 1.17em; font-weight: bold; margin-bottom: 0.75em; }
+        h4 { font-size: 1em; font-weight: bold; margin-bottom: 0.75em; }
+        
+        /* 恢复列表样式 (针对旧页面) */
+        ul.list-disc { list-style-type: disc; margin-left: 1.5em; }
+        ol.list-decimal { list-style-type: decimal; margin-left: 1.5em; }
+
+        /* --- V4.3 FIX: 颜色兼容补丁 --- */
+        /* Tailwind V2 默认没有 'rose' 颜色，我们用 CSS 变量模拟一下 */
+        .text-rose-500 { color: #f43f5e !important; }
+        .text-rose-600 { color: #e11d48 !important; }
+        .text-rose-400 { color: #fb7185 !important; }
+        .bg-rose-200 { background-color: #fecdd3 !important; }
+        .bg-rose-500 { background-color: #f43f5e !important; }
+        .hover\:bg-rose-600:hover { background-color: #e11d48 !important; }
+        .hover\:text-rose-500:hover { color: #f43f5e !important; }
+        .bg-rose-100 { background-color: #ffe4e6 !important; }
+        .text-green-700 { color: #15803d !important; }
+        .bg-green-100 { background-color: #dcfce7 !important; }
+        .text-red-700 { color: #b91c1c !important; }
+        .bg-red-100 { background-color: #fee2e2 !important; }
+        
+        /* --- 基础样式 --- */
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "Helvetica Neue", "Arial", sans-serif;
             background-color: #fffafb; /* 非常浅的粉色背景 */
+            padding-top: 70px; /* 给固定导航栏留出空间 */
         }
         
-        /* V4.1 (FIX): 
-          我们必须保留所有 V1, V2, V3 模块的旧 CSS,
-          因为我们还没有用 Tailwind 重构这些子页面.
-        */
-
-        /* --- V1/V2 (旧) 表单和按钮样式 --- */
+        /* --- V1/V2 旧样式兼容 (保留) --- */
         .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; }
-        .form-group input, .form-group textarea { width: 95%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        .btn { background: #007BFF; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
-        .btn-danger { background-color: #DC3545; }
-        .btn-danger:hover { background-color: #c82333; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; }
+        .form-group input, .form-group textarea { 
+            width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; 
+            box-sizing: border-box; /* 关键: 防止宽度溢出 */
+        }
+        /* 让旧按钮也漂亮一点 */
+        .btn { 
+            background-color: #3b82f6; color: white; padding: 10px 20px; 
+            border: none; border-radius: 6px; cursor: pointer; 
+            text-decoration: none; display: inline-block; font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        .btn:hover { background-color: #2563eb; }
+        .btn-danger { background-color: #ef4444; }
+        .btn-danger:hover { background-color: #dc2626; }
+        .btn-delete-sm { background-color: #9ca3af; padding: 4px 8px; font-size: 0.875rem; }
+        .btn-delete-sm:hover { background-color: #ef4444; }
 
-        /* --- V2.5 (旧) 邀请码样式 --- */
-        .invite-box { background: #f0f0f0; border: 1px dashed #ccc; padding: 15px; border-radius: 8px; text-align: center; }
-        .invite-code { font-size: 2.5em; font-weight: bold; color: #333; letter-spacing: 3px; margin: 10px 0; }
+        /* --- 模态框样式 (保留) --- */
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); backdrop-filter: blur(2px); }
+        .modal-content { background-color: #fff; margin: 5vh auto; padding: 24px; border: none; width: 90%; max-width: 500px; border-radius: 12px; position: relative; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
+        .modal-close { color: #9ca3af; float: right; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1; }
+        .modal-close:hover { color: #1f2937; }
 
-        /* --- V3.0 (旧) 日历模态框样式 --- */
-        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
-        .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 8px; position: relative; }
-        .modal-close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; position: absolute; top: 10px; right: 15px; }
-        #journal-form textarea { width: 95%; height: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        .journal-entry-view { margin-bottom: 15px; }
-        .journal-entry-view strong { color: #007BFF; }
-        .journal-entry-view.partner { border-top: 1px dashed #ccc; padding-top: 15px; }
-        .journal-entry-view.partner strong { color: #28a745; }
+        /* --- V3.x 模块样式 --- */
+        .invite-box { background: #f9fafb; border: 2px dashed #d1d5db; padding: 20px; border-radius: 12px; text-align: center; }
+        .invite-code { font-size: 2.5em; font-weight: 800; color: #1f2937; letter-spacing: 4px; margin: 15px 0; font-family: monospace; }
         
-        /* --- V3.0 (FIX - 缺失的) 日历网格样式 --- */
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; border: 1px solid #ddd; padding: 5px; border-radius: 8px; }
-        .calendar-header { font-weight: bold; text-align: center; padding: 8px 0; background: #f7f7f7; border-bottom: 1px solid #ddd; }
-        .calendar-day { min-height: 100px; border: 1px solid #eee; padding: 8px; border-radius: 4px; background-color: #fafafa; position: relative; cursor: pointer; transition: background-color 0.2s; }
-        .calendar-day:hover { background-color: #f0f0f0; }
-        .calendar-day .day-number { font-size: 0.9em; font-weight: bold; }
-        .calendar-day.other-month { background-color: #fff; color: #ccc; }
-        .entry-dots { position: absolute; bottom: 8px; left: 8px; display: flex; gap: 4px; }
+        /* 日历 */
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; border: 1px solid #e5e7eb; padding: 8px; border-radius: 12px; background: white; }
+        .calendar-header { font-weight: 600; text-align: center; padding: 8px 0; color: #6b7280; font-size: 0.9em; }
+        .calendar-day { min-height: 80px; border: 1px solid #f3f4f6; padding: 6px; border-radius: 6px; background-color: #fff; position: relative; cursor: pointer; transition: all 0.2s; }
+        .calendar-day:hover { background-color: #fff1f2; border-color: #fecdd3; }
+        .calendar-day .day-number { font-size: 0.85em; font-weight: 600; color: #374151; }
+        .calendar-day.other-month { background-color: #f9fafb; color: #d1d5db; pointer-events: none; }
+        .entry-dots { position: absolute; bottom: 6px; left: 6px; display: flex; gap: 4px; }
         .dot { width: 8px; height: 8px; border-radius: 50%; }
-        .dot-me { background-color: #007BFF; }
-        .dot-partner { background-color: #28a745; }
+        .dot-me { background-color: #3b82f6; }
+        .dot-partner { background-color: #10b981; }
+        
+        /* 纪念册 */
+        .memories-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+        .memory-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); overflow: hidden; transition: all 0.2s; text-decoration: none; color: inherit; display: block; }
+        .memory-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .memory-card img { width: 100%; height: 200px; object-fit: cover; }
+        .memory-card-content { padding: 16px; }
+        .memory-card-content h3 { margin: 0 0 8px 0; font-size: 1.25em; font-weight: 700; color: #111827; }
+        .memory-card-meta { font-size: 0.875em; color: #6b7280; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .memory-card-author { font-size: 0.8em; color: #9ca3af; text-align: right; }
 
-        /* --- V3.1 (FIX - 缺失的) 纪念册卡片样式 --- */
-        .memories-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-        .memory-card { background: #fff; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; text-decoration: none; color: #333; }
-        .memory-card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        .memory-card img { width: 100%; height: 180px; object-fit: cover; border-bottom: 1px solid #eee; }
-        .memory-card-content { padding: 15px; }
-        .memory-card-content h3 { margin: 0 0 8px 0; font-size: 1.2em; }
-        .memory-card-meta { font-size: 0.9em; color: #666; margin-bottom: 10px; }
-        .memory-card-author { font-size: 0.8em; color: #999; }
-        
-        /* --- V3.2 (FIX - 缺失的) 愿望清单样式 --- */
-        .wishlist-form { display: flex; gap: 10px; margin-bottom: 20px; }
-        .wishlist-form input { flex-grow: 1; /* 占据剩余空间 */ }
-        .wishlist-container { display: flex; flex-direction: column; md:flex-direction: row; gap: 20px; }
-        .wishlist-column { flex: 1; }
-        .wishlist-column h3 { border-bottom: 2px solid #eee; padding-bottom: 8px; }
-        .wishlist-item { 
-            display: flex; 
-            align-items: center; 
-            padding: 10px; 
-            border-bottom: 1px solid #f0f0f0;
-            justify-content: space-between;
-        }
-        .wishlist-item.completed span { 
-            text-decoration: line-through; 
-            color: #999; 
-        }
-        .wishlist-item-content {
-            flex-grow: 1;
-            display: flex;
-            align-items: center;
-        }
-        .wishlist-item-content span {
-            margin-left: 10px;
-        }
-        .wishlist-item-content .author-tag {
-            font-size: 0.8em;
-            color: #fff;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 8px;
-        }
-        .wishlist-item-content .author-me { background-color: #007BFF; }
-        .wishlist-item-content .author-partner { background-color: #28a745; }
-        
-        .wishlist-item .actions {
-            display: flex;
-            gap: 10px;
-        }
-        .wishlist-item .btn-sm {
-            padding: 5px 8px;
-            font-size: 0.9em;
-        }
-        .wishlist-item .btn-delete-sm {
-            background: #aaa;
-            padding: 5px 8px;
-            font-size: 0.9em;
-        }
-        .wishlist-item .btn-delete-sm:hover {
-            background: #DC3545;
-        }
+        /* 愿望清单 */
+        .wishlist-form { display: flex; gap: 10px; margin-bottom: 24px; }
+        .wishlist-container { display: grid; grid-template-columns: 1fr; gap: 30px; }
+        @media (min-width: 768px) { .wishlist-container { grid-template-columns: 1fr 1fr; } }
+        .wishlist-column h3 { border-bottom: 2px solid #f3f4f6; padding-bottom: 12px; margin-bottom: 16px; color: #374151; }
+        .wishlist-item { display: flex; align-items: center; padding: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 10px; transition: all 0.2s; }
+        .wishlist-item:hover { border-color: #d1d5db; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .wishlist-item.completed { background-color: #f9fafb; }
+        .wishlist-item.completed span { text-decoration: line-through; color: #9ca3af; }
+        .wishlist-item-content { flex-grow: 1; display: flex; align-items: center; gap: 10px; }
+        .author-tag { font-size: 0.7em; color: #fff; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
+        .author-me { background-color: #60a5fa; }
+        .author-partner { background-color: #34d399; }
     </style>
 </head>
 <body class="text-gray-800">
     
-    <!-- V4.0: 新的 Tailwind 导航栏 -->
-    <header class="bg-white shadow-md sticky top-0 z-10">
-        <div class="container mx-auto max-w-5xl px-4 py-4">
-            <div class="flex justify-between items-center">
-                <a href="{{ url_for('index') }}" class="text-2xl font-bold text-rose-500">
+    <!-- 导航栏 -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto max-w-5xl px-4 py-3">
+            <div class="flex justify-between items-center mb-2">
+                <a href="{{ url_for('index') }}" class="text-2xl font-bold text-rose-500 hover:text-rose-600 transition-colors no-underline">
                     我们的小窝 ❤️
                 </a>
                 <div class="flex items-center space-x-4">
                     {% if current_user.is_authenticated %}
-                        <span class="text-sm text-gray-600 hidden sm:block">
-                            您好, {{ current_user.username }}
-                        </span>
-                        <!-- 模拟用户头像 -->
-                        <div class="flex items-center space-x-2">
+                        <div class="hidden sm:flex items-center space-x-2">
                             <div class="w-8 h-8 rounded-full bg-rose-200 text-rose-600 flex items-center justify-center font-bold text-sm">
                                 {{ current_user.username[0] | upper }}
                             </div>
@@ -142,91 +136,59 @@
                             </div>
                             {% endif %}
                         </div>
-                        <a href="{{ url_for('logout') }}" class="text-gray-500 hover:text-rose-500" title="退出登录">
+                        <a href="{{ url_for('logout') }}" class="text-gray-500 hover:text-rose-500 transition-colors" title="退出登录">
                             <i data-lucide="log-out" class="w-5 h-5"></i>
                         </a>
                     {% else %}
-                        <a href="{{ url_for('login') }}" class="text-sm font-medium text-gray-600 hover:text-rose-500">登录</a>
-                        <a href="{{ url_for('register') }}" class="text-sm font-medium text-white bg-rose-500 px-3 py-1.5 rounded-md hover:bg-rose-600">注册</a>
+                        <a href="{{ url_for('login') }}" class="text-sm font-medium text-gray-600 hover:text-rose-500 no-underline">登录</a>
+                        <a href="{{ url_for('register') }}" class="text-sm font-medium text-white bg-rose-500 px-3 py-1.5 rounded-md hover:bg-rose-600 no-underline">注册</a>
                     {% endif %}
                 </div>
             </div>
             
             {% if current_user.is_authenticated %}
-            <!-- V4.0: 新的 Tailwind 导航链接 -->
-            <nav class="mt-4">
-                <ul class="flex space-x-2 md:space-x-6 overflow-x-auto whitespace-nowrap">
-                    <!-- 链接到 'index' (仪表盘) -->
+            <nav class="overflow-x-auto">
+                <ul class="flex space-x-1 min-w-max pb-1">
                     <li><a href="{{ url_for('index') }}" class="nav-link {{ 'active' if request.endpoint == 'index' else '' }}">
-                        <i data-lucide="home" class="w-4 h-4 sm:mr-2"></i>
-                        <span class="hidden sm:inline">首页</span>
+                        <i data-lucide="home" class="w-4 h-4 mr-1.5"></i>首页
                     </a></li>
-                    
-                    <!-- 链接到 'memories' -->
                     <li><a href="{{ url_for('memories') }}" class="nav-link {{ 'active' if request.endpoint.startswith('memory') else '' }}">
-                        <i data-lucide="gallery-thumbnails" class="w-4 h-4 sm:mr-2"></i>
-                        <span class="hidden sm:inline">纪念册</span>
+                        <i data-lucide="image" class="w-4 h-4 mr-1.5"></i>纪念册
                     </a></li>
-                    
-                    <!-- 链接到 'journal' -->
                     <li><a href="{{ url_for('journal') }}" class="nav-link {{ 'active' if request.endpoint.startswith('journal') else '' }}">
-                        <i data-lucide="book-heart" class="w-4 h-4 sm:mr-2"></i>
-                        <span class="hidden sm:inline">共享日记</span>
+                        <i data-lucide="book-open" class="w-4 h-4 mr-1.5"></i>日记
                     </a></li>
-                    
-                    <!-- 链接到 'wishlist' -->
                     <li><a href="{{ url_for('wishlist') }}" class="nav-link {{ 'active' if request.endpoint.startswith('wishlist') else '' }}">
-                        <i data-lucide="list-checks" class="w-4 h-4 sm:mr-2"></i>
-                        <span class="hidden sm:inline">愿望清单</span>
+                        <i data-lucide="list" class="w-4 h-4 mr-1.5"></i>愿望
                     </a></li>
-                    
-                    <!-- V4.0.1 (FIX): 链接到 'recipes_list' -->
                     <li><a href="{{ url_for('recipes_list') }}" class="nav-link {{ 'active' if request.endpoint.startswith('recipe') or request.endpoint == 'what_can_i_make' else '' }}">
-                        <i data-lucide="utensils-crossed" class="w-4 h-4 sm:mr-2"></i>
-                        <span class="hidden sm:inline">共享菜谱</span>
+                        <i data-lucide="coffee" class="w-4 h-4 mr-1.5"></i>菜谱
                     </a></li>
-                    
-                    <!-- 链接到 'partner_page' -->
                     <li><a href="{{ url_for('partner_page') }}" class="nav-link {{ 'active' if request.endpoint.startswith('partner') else '' }}">
-                        <i data-lucide="link-2" class="w-4 h-4 sm:mr-2"></i>
-                        <span class="hidden sm:inline">我的伴侣</span>
+                        <i data-lucide="heart" class="w-4 h-4 mr-1.5"></i>伴侣
                     </a></li>
                 </ul>
-                <style>
-                    .nav-link {
-                        display: flex;
-                        align-items: center;
-                        padding: 8px 10px;
-                        font-weight: 600;
-                        color: #4b5563; /* 灰色 */
-                        border-bottom: 3px solid transparent;
-                        transition: all 0.2s;
-                    }
-                    .nav-link:hover {
-                        color: #f43f5e;
-                        background-color: #fff1f2; /* 玫瑰红-50 */
-                        border-radius: 6px;
-                    }
-                    .nav-link.active {
-                        color: #f43f5e; /* 玫瑰红 */
-                        border-bottom-color: #f43f5e;
-                    }
-                </style>
             </nav>
+            <style>
+                .nav-link {
+                    display: flex; align-items: center; padding: 8px 12px; font-weight: 600; color: #4b5563; 
+                    border-radius: 8px; transition: all 0.2s; text-decoration: none; font-size: 0.95rem;
+                }
+                .nav-link:hover { color: #f43f5e; background-color: #fff1f2; }
+                .nav-link.active { color: #f43f5e; background-color: #fff1f2; }
+            </style>
             {% endif %}
         </div>
     </header>
 
-    <!-- V4.0: 新的主内容区 (Tailwind) -->
     <main class="container mx-auto max-w-5xl p-4 mt-6">
-        
-        <!-- V4.0: 新的 Tailwind Flash 消息 -->
+        <!-- Flash 消息 -->
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
-            <div class="flash-messages space-y-3 mb-4">
+            <div class="space-y-3 mb-6">
             {% for category, message in messages %}
-              {% set color_class = 'bg-green-100 text-green-700' if category == 'success' else 'bg-red-100 text-red-700' %}
-              <div class="flash {{ category }} p-4 rounded-md {{ color_class }}">
+              {% set color_class = 'bg-green-100 text-green-700 border-green-200' if category == 'success' else 'bg-red-100 text-red-700 border-red-200' %}
+              <div class="p-4 rounded-lg border {{ color_class }}">
                 {{ message }}
               </div>
             {% endfor %}
@@ -234,28 +196,24 @@
           {% endif %}
         {% endwith %}
         
-        <!-- 子模板 (index.html, login.html 等) 的内容将在这里被插入 -->
         {% block content %}{% endblock %}
     </main>
 
-    <!-- 
-      V3.0/V3.2 日记模态框 (Modal)
-      (FIX V4.2: 修复了JS逻辑)
-    -->
+    <!-- 日记模态框 (保持不变) -->
     <div id="journalModal" class="modal">
         <div class="modal-content">
             <span class="modal-close" onclick="closeModal()">&times;</span>
-            <h3 id="modal-title">...</h3>
+            <h3 id="modal-title" style="margin-top:0; margin-bottom:15px; font-size:1.25em; font-weight:bold;">...</h3>
             <div id="journal-view">
                 <div id="view-me" class="journal-entry-view" style="display: none;">
                     <strong>{{ current_user.username if current_user.is_authenticated else '我' }} 写道:</strong>
-                    <p id="view-me-content"></p>
+                    <p id="view-me-content" style="margin-top:5px; white-space: pre-wrap;"></p>
                 </div>
                 <div id="view-partner" class="journal-entry-view partner" style="display: none;">
                     <strong id="view-partner-name">... (TA) 写道:</strong>
-                    <p id="view-partner-content"></p>
+                    <p id="view-partner-content" style="margin-top:5px; white-space: pre-wrap;"></p>
                 </div>
-                <button id="edit-my-entry-btn" class="btn" onclick="openEditView()">编辑我的日记</button>
+                <button id="edit-my-entry-btn" class="btn" style="margin-top:15px; width:100%;" onclick="openEditView()">编辑我的日记</button>
             </div>
             <div id="journal-edit" style="display: none;">
                 <form id="journal-form" onsubmit="return saveJournal()">
@@ -264,23 +222,23 @@
                         <textarea id="journal-content" name="content" required></textarea>
                         <input type="hidden" id="journal-date" name="date">
                     </div>
-                    <button type="submit" class="btn">保存</button>
-                    <button type="button" class="btn" onclick="closeModal()" style="background-color: #aaa;">取消</button>
+                    <button type="submit" class="btn" style="width:100%;">保存</button>
+                    <button type="button" class="btn" onclick="closeModal()" style="background-color: #9ca3af; width:100%; margin-top:10px;">取消</button>
                 </form>
             </div>
         </div>
     </div>
     
-    <!-- V4.0: 脚本区 -->
+    <!-- 脚本区 -->
     <script>
-        // 1. 激活 Lucide 图标
+        // 1. 激活图标
         document.addEventListener('DOMContentLoaded', () => {
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
         });
 
-        // 2. V3.2/V4.0 日记模态框的 JavaScript (FIX V4.2)
+        // 2. 日记模态框逻辑 (不变)
         const modal = document.getElementById('journalModal');
         const modalTitle = document.getElementById('modal-title');
         const journalView = document.getElementById('journal-view');
@@ -295,58 +253,38 @@
         const journalFormDate = document.getElementById('journal-date');
         let currentModalDate = null;
         
-        // (FIX V4.2): 确保 openModal 和 openEditView 在 closeModal 之前定义
-        function openEditView() {
-            modalTitle.textContent = `编辑日记: ${currentModalDate}`;
-            journalView.style.display = 'none';
-            journalEdit.style.display = 'block';
-        }
-
-        function closeModal() {
-            if(modal) modal.style.display = 'none';
-        }
-
-        // (FIX V4.2): 确保 openModal 存在且正确
         function openModal(element) {
-            // (从 journal.html 的 body 中获取伴侣名字)
             const partnerName = document.body.dataset.partnerName || 'TA';
             viewPartnerName.textContent = `${partnerName} (TA) 写道:`;
-            
-            // (从被点击的 <div> 元素中读取 data-* 属性)
             const data = element.dataset;
             const dateStr = data.date;
             const hasMe = (data.me === 'true');
             const hasPartner = (data.partner === 'true');
             const meContent = data.meContent || '';
             const partnerContent = data.partnerContent || '';
-
             currentModalDate = dateStr;
             journalFormDate.value = dateStr;
             modalTitle.textContent = `日记: ${dateStr}`;
 
             if (!hasMe && !hasPartner) {
-                // 1. 没有人写过, 打开"编辑"视图
                 journalFormContent.value = ''; 
                 journalView.style.display = 'none';
                 journalEdit.style.display = 'block';
             } else {
-                // 2. 至少有一人写过, 打开"查看"视图
                 journalView.style.display = 'block';
                 journalEdit.style.display = 'none';
-                
                 if (hasMe) {
                     viewMe.style.display = 'block';
                     viewMeContent.textContent = meContent;
-                    journalFormContent.value = meContent; // 预填充"编辑"框
+                    journalFormContent.value = meContent; 
                     editMyEntryBtn.style.display = 'inline-block';
                     editMyEntryBtn.textContent = '编辑我的日记';
                 } else {
                     viewMe.style.display = 'none';
-                    journalFormContent.value = ''; // "编辑"框为空
+                    journalFormContent.value = ''; 
                     editMyEntryBtn.style.display = 'inline-block'; 
                     editMyEntryBtn.textContent = '写我的日记';
                 }
-                
                 if (hasPartner) {
                     viewPartner.style.display = 'block';
                     viewPartnerContent.textContent = partnerContent;
@@ -354,34 +292,34 @@
                     viewPartner.style.display = 'none';
                 }
             }
-            if(modal) modal.style.display = 'block';
+            modal.style.display = 'block';
         }
-        
+        function openEditView() {
+            modalTitle.textContent = `编辑日记: ${currentModalDate}`;
+            journalView.style.display = 'none';
+            journalEdit.style.display = 'block';
+        }
+        function closeModal() {
+            modal.style.display = 'none';
+        }
         window.onclick = function(event) {
             if (event.target == modal) {
                 closeModal();
             }
         }
-        
         async function saveJournal() {
             const date = journalFormDate.value;
             const content = journalFormContent.value;
             try {
                 const response = await fetch("{{ url_for('add_journal_entry') }}", {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        date: date,
-                        content: content
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ date: date, content: content })
                 });
                 const result = await response.json();
                 if (response.ok) {
                     closeModal();
-                    window.location.reload(); // 刷新页面以查看新条目
+                    window.location.reload(); 
                 } else {
                     alert('错误: ' + result.message);
                 }
@@ -389,7 +327,7 @@
                 console.error('保存失败:', error);
                 alert('保存日记时发生网络错误。');
             }
-            return false; // 阻止表单默认提交
+            return false; 
         }
     </script>
 </body>
