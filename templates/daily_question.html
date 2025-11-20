@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="max-w-2xl mx-auto">
+        <div class="text-center mb-8">
+            <span class="inline-block bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-sm font-bold mb-2">
+                📅 每日一问 · {{ question.date_str }}
+            </span>
+            <h2 class="text-2xl md:text-3xl font-bold text-gray-800">{{ question.content }}</h2>
+        </div>
+
+        <div class="grid gap-6">
+            
+            <!-- 我的回答 -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-blue-500">
+                <h3 class="font-bold text-gray-500 mb-2 flex items-center">
+                    <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                    我的回答
+                </h3>
+                
+                {% if my_answer %}
+                    <p class="text-lg text-gray-800">{{ my_answer.content }}</p>
+                    <button onclick="document.getElementById('edit-form').style.display='block'" class="text-sm text-blue-500 mt-2 hover:underline">修改回答</button>
+                {% else %}
+                    <form action="{{ url_for('answer_daily_question', question_id=question.id) }}" method="POST">
+                        <textarea name="content" rows="3" class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-300" placeholder="写下你的想法..."></textarea>
+                        <button type="submit" class="btn mt-2 w-full">提交回答</button>
+                    </form>
+                {% endif %}
+                
+                <!-- 修改表单 (隐藏) -->
+                {% if my_answer %}
+                <form id="edit-form" action="{{ url_for('answer_daily_question', question_id=question.id) }}" method="POST" style="display:none;" class="mt-4">
+                    <textarea name="content" rows="3" class="w-full border rounded-lg p-3">{{ my_answer.content }}</textarea>
+                    <button type="submit" class="btn mt-2">保存修改</button>
+                </form>
+                {% endif %}
+            </div>
+
+            <!-- 伴侣的回答 -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-rose-500 relative overflow-hidden">
+                <h3 class="font-bold text-gray-500 mb-2 flex items-center">
+                    <span class="w-2 h-2 bg-rose-500 rounded-full mr-2"></span>
+                    {{ partner_name }} 的回答
+                </h3>
+
+                {% if is_unlocked %}
+                    <!-- 状态 A: 已解锁 -->
+                    <p class="text-lg text-gray-800">{{ partner_answer.content }}</p>
+                    <div class="mt-4 p-3 bg-yellow-50 text-yellow-800 rounded-lg text-sm text-center">
+                        🎉 双方已完成，答案已解锁！快去和TA讨论一下吧！
+                    </div>
+                {% else %}
+                    <!-- 状态 B: 未解锁 -->
+                    <div class="filter blur-sm select-none">
+                        <p class="text-lg text-gray-400">
+                            这里是对方的回答内容，但是你看不到。
+                            这里是对方的回答内容，但是你看不到。
+                        </p>
+                    </div>
+                    
+                    <div class="absolute inset-0 flex items-center justify-center bg-white bg-opacity-60">
+                        <div class="text-center p-4 bg-white shadow-xl rounded-xl border border-rose-100">
+                            <div class="text-4xl mb-2">🔒</div>
+                            {% if partner_answer %}
+                                <p class="font-bold text-rose-600">TA 已经回答啦！</p>
+                                <p class="text-sm text-gray-500">快提交你的回答来解锁。</p>
+                            {% else %}
+                                <p class="font-bold text-gray-500">TA 还没有回答</p>
+                                <p class="text-sm text-gray-400">等TA回答后才能看到哦</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+{% endblock %}
+```
+
+#### 第3步：修改 `templates/base.html` (添加导航)
+
+请在 `base.html` 的导航栏中，添加一个新的链接：
+
+```html
+<!-- 在愿望清单下方 -->
+<li><a href="{{ url_for('daily_question') }}" class="nav-link {{ 'active' if request.endpoint.startswith('daily_question') else '' }}">
+    <i data-lucide="message-circle-question" class="w-4 h-4 sm:mr-2"></i>
+    <span class="hidden sm:inline">每日一问</span>
+</a></li>
+```
+
+---
+
+### 【阶段二 (V5.0)：本地测试】
+
+1.  **清理本地环境**：停止服务，删除 `recipes.db` 和 `migrations` 文件夹。
+2.  **初始化数据库**：
+    ```powershell
+    # 激活venv
+    $env:FLASK_APP = "app.py"
+    flask db init
+    flask db migrate -m "V5.0 Add Daily Question"
+    flask db upgrade
+    ```
+3.  **运行应用**：`python app.py`
+4.  **测试流程**：
+    * 注册 `test1`, `test2` 并互相绑定。
+    * `test1` 进入“每日一问”，提交回答。
+    * 验证：`test1` 看不到 `test2` 的答案（显示“TA还没有回答”）。
+    * `test2` 进入“每日一问”。
+    * 验证：`test2` 看到 `test1` “已经回答”，但内容被模糊锁定。
+    * `test2` 提交回答。
+    * **关键验证**：双方页面刷新后，锁解开，能看到彼此的真心话！
+
+---
+
+### 【阶段三 (V5.0)：服务器部署 (手动手术)】
+
+当本地测试通过后，您可以推送到服务器。
+
+**服务器端手动升级数据库命令（请在 `systemctl stop` 后运行）：**
+
+```bash
+# 1. 创建 DailyQuestion 表
+sqlite3 recipes.db "CREATE TABLE daily_question (id INTEGER NOT NULL, content VARCHAR(200) NOT NULL, date_str VARCHAR(10) NOT NULL, PRIMARY KEY (id), UNIQUE (date_str));"
+
+# 2. 创建 DailyAnswer 表
+sqlite3 recipes.db "CREATE TABLE daily_answer (id INTEGER NOT NULL, content TEXT NOT NULL, user_id INTEGER NOT NULL, question_id INTEGER NOT NULL, PRIMARY KEY (id), FOREIGN KEY(user_id) REFERENCES user (id), FOREIGN KEY(question_id) REFERENCES daily_question (id));"

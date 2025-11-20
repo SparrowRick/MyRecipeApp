@@ -9,24 +9,36 @@
         <p class="text-gray-600 mt-2">接下来的日子也要一起走过！</p>
     </div>
 
-    <!-- 2. 快捷入口 (保持不变) -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+    <!-- 2. 快捷入口 -->
+    <!-- 这里我们将网格改为 5 列，或者让它自动换行 -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mt-8">
+        
         <a href="{{ url_for('memories') }}" class="shortcut-card">
             <i data-lucide="gallery-thumbnails" class="w-10 h-10"></i>
             <span>纪念册</span>
         </a>
+        
         <a href="{{ url_for('wishlist') }}" class="shortcut-card">
             <i data-lucide="list-checks" class="w-10 h-10"></i>
             <span>愿望清单</span>
         </a>
+        
         <a href="{{ url_for('journal') }}" class="shortcut-card">
             <i data-lucide="book-heart" class="w-10 h-10"></i>
             <span>共享日记</span>
         </a>
+        
         <a href="{{ url_for('recipes_list') }}" class="shortcut-card">
             <i data-lucide="utensils-crossed" class="w-10 h-10"></i>
             <span>共享菜谱</span>
         </a>
+        
+        <!-- NEW: 每日一问卡片 -->
+        <a href="{{ url_for('daily_question') }}" class="shortcut-card">
+            <i data-lucide="message-circle-question" class="w-10 h-10"></i>
+            <span>每日一问</span>
+        </a>
+        
         <style>
             .shortcut-card {
                 display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -42,19 +54,12 @@
         </style>
     </div>
 
-    <!-- 3. 最近动态 (V4.5 - 全面支持) -->
+    <!-- 3. 最近动态 (保持不变) -->
     <div class="mt-8">
         <h2 class="text-2xl font-bold mb-4">最近动态</h2>
         <div class="bg-white rounded-xl shadow-lg p-6 space-y-4">
             
             {% for activity in activities %}
-                <!-- 
-                  根据 activity.type 动态设置边框颜色
-                  recipe   -> 玫瑰红 (rose-400)
-                  memory   -> 蓝色   (blue-400)
-                  wishlist -> 紫色   (purple-400)
-                  journal  -> 黄色   (yellow-400)
-                -->
                 <div class="border-l-4 pl-4 
                     {% if activity.type == 'recipe' %} border-rose-400 
                     {% elif activity.type == 'memory' %} border-blue-400 
@@ -86,7 +91,6 @@
     <!-- 4. 计数器 JS (保持不变) -->
     <script>
         function updateAnniversaryCounter() {
-            // (请)修改这里的日期为您们的真实纪念日!
             const startDate = new Date('2024-05-01T00:00:00'); 
             const today = new Date();
             const diffTime = Math.abs(today - startDate);
@@ -100,20 +104,3 @@
         });
     </script>
 {% endblock %}
-```
-
----
-
-### 如何部署
-
-1.  **本地测试：** 启动 `python app.py`，添加一个愿望或写一篇日记，然后回到首页，看看“最近动态”里是否出现了新的条目（注意观察边框颜色是否正确）。
-2.  **Git 推送：**
-    ```powershell
-    git add .
-    git commit -m "Feat: Include Wishlist and Journal in Dashboard activities"
-    git push
-    ```
-3.  **服务器更新：**
-    ```bash
-    git pull
-    systemctl restart recipeapp
