@@ -1,21 +1,26 @@
 import os
 import string 
 import secrets 
+import datetime
+import calendar
+import re
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify 
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate 
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import or_ 
-import datetime
 from werkzeug.utils import secure_filename 
+from sqlalchemy import or_ 
 
-# --- 配置 ---
+# --- 1. 配置区域 (必须在最前面) ---
 basedir = os.path.abspath(os.path.dirname(__file__))
+
+# 关键：在这里初始化 'app' 变量
 app = Flask(__name__)
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'recipes.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'a_very_secret_key_change_this'
+app.config['SECRET_KEY'] = 'a_very_secret_key_change_this_for_production'
 app.config['UPLOAD_FOLDER'] = os.path.join(basedir, 'static/uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -30,7 +35,8 @@ login_manager.login_message_category = 'error'
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- 数据库模型 ---
+# --- 2. 数据库模型 (Models) ---
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -38,7 +44,13 @@ class User(UserMixin, db.Model):
     recipes = db.relationship('Recipe', backref='author', lazy=True, cascade="all, delete-orphan")
     invite_code = db.Column(db.String(6), unique=True, nullable=True) 
     partner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) 
-    partner = db.relationship('User', remote_side=[id], primaryjoin=partner_id == id, uselist=False, lazy=True)
+    partner = db.relationship(
+        'User', 
+        remote_side=[id], 
+        primaryjoin=partner_id == id, 
+        uselist=False,
+        lazy=True 
+    )
     journal_entries = db.relationship('JournalEntry', backref='author', lazy=True)
     memories = db.relationship('Memory', backref='author', lazy=True)
     wishlist_items = db.relationship('WishlistItem', backref='author', lazy=True)
@@ -99,10 +111,12 @@ class WishlistItem(db.Model):
     is_completed = db.Column(db.Boolean, default=False, nullable=False)
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
+# --- 3. 辅助函数 ---
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- 路由 ---
+# --- 4. 用户认证路由 ---
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -141,13 +155,64 @@ def register():
             return redirect(url_for('register'))
     return render_template('register.html')
 
-# --- V4.0: 仪表盘 (Dashboard) ---
+# --- 5. 首页与仪表盘 (V4.5 动态版) ---
+
 @app.route('/')
 @login_required
 def index():
-    return render_template('index.html')
+    # 1. 获取用户和伴侣 ID
+    user_ids = [current_user.id]
+    if current_user.partner_id:
+        user_ids.append(current_user.partner_id)
+    
+    activities = []
 
-# --- V4.0: 菜谱列表 (Recipes List) ---
+    # 2. 获取最近的菜谱 (Recipe)
+    recent_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).order_by(Recipe.id.desc()).limit(3).all()
+    for r in recent_recipes:
+        activities.append({
+            'type': 'recipe',
+            'time': r.id, 
+            'text': f"{r.author.username} 添加了新菜谱: {r.name}"
+        })
+
+    # 3. 获取最近的回忆 (Memory)
+    recent_memories = Memory.query.filter(Memory.author_id.in_(user_ids)).order_by(Memory.id.desc()).limit(3).all()
+    for m in recent_memories:
+        activities.append({
+            'type': 'memory',
+            'time': m.id,
+            'text': f"{m.author.username} 添加了新回忆: {m.title}"
+        })
+
+    # 4. 获取最近的愿望 (Wishlist)
+    recent_wishes = WishlistItem.query.filter(WishlistItem.author_id.in_(user_ids)).order_by(WishlistItem.id.desc()).limit(3).all()
+    for w in recent_wishes:
+        action = "完成了愿望" if w.is_completed else "许下了愿望"
+        activities.append({
+            'type': 'wishlist',
+            'time': w.id,
+            'text': f"{w.author.username} {action}: {w.content}"
+        })
+
+    # 5. 获取最近的日记 (Journal)
+    recent_journals = JournalEntry.query.filter(JournalEntry.author_id.in_(user_ids)).order_by(JournalEntry.id.desc()).limit(3).all()
+    for j in recent_journals:
+        activities.append({
+            'type': 'journal',
+            'time': j.id,
+            'text': f"{j.author.username} 写了一篇日记 ({j.date_str})"
+        })
+    
+    # 6. 混合排序并截取前 10 条
+    activities.sort(key=lambda x: x['time'], reverse=True)
+    latest_activities = activities[:10]
+
+    return render_template('index.html', activities=latest_activities)
+
+
+# --- 6. 菜谱功能路由 ---
+
 @app.route('/recipes')
 @login_required
 def recipes_list():
@@ -190,7 +255,6 @@ def add_recipe():
                 if name: db.session.add(Seasoning(name=name, quantity=qty, recipe_id=new_recipe.id))
             db.session.commit()
             flash('菜谱添加成功!', 'success')
-            # FIX: 重定向到 recipes_list
             return redirect(url_for('recipes_list'))
         except Exception as e:
             db.session.rollback(); flash(f'添加食材出错: {e}', 'error'); return redirect(url_for('add_recipe'))
@@ -204,7 +268,6 @@ def recipe_detail(recipe_id):
     recipe = Recipe.query.filter(Recipe.id == recipe_id, Recipe.user_id.in_(user_ids)).first()
     if not recipe:
         flash('未找到该菜谱', 'error')
-        # FIX: 重定向到 recipes_list
         return redirect(url_for('recipes_list'))
     return render_template('recipe_detail.html', recipe=recipe)
 
@@ -218,7 +281,6 @@ def delete_recipe(recipe_id):
         db.session.delete(recipe)
         db.session.commit()
         flash('删除成功', 'success')
-        # FIX: 重定向到 recipes_list
         return redirect(url_for('recipes_list'))
     except Exception as e:
         db.session.rollback(); flash(f'删除出错: {e}', 'error'); return redirect(url_for('recipe_detail', recipe_id=recipe_id))
@@ -233,7 +295,7 @@ def add_log(recipe_id):
     new_log = CookingLog(time_taken=request.form['time_taken'], notes=request.form['notes'], recipe_id=recipe.id)
     db.session.add(new_log); db.session.commit()
     flash('日志已添加', 'success')
-    return redirect(url_for('recipe_detail', recipe_id=recipe_id))
+    return redirect(url_for('recipe_detail', recipe_id=recipe.id))
 
 @app.route('/what_can_i_make', methods=['GET', 'POST'])
 @login_required
@@ -243,7 +305,7 @@ def what_can_i_make():
     perfect_matches = []
     partial_matches = []
     pantry_input = ""
-    import re
+    
     if request.method == 'POST':
         pantry_input = request.form['pantry']
         user_pantry_set = {item.strip() for item in re.split(r'[,\s\n]+', pantry_input) if item.strip()}
@@ -258,6 +320,8 @@ def what_can_i_make():
                 missing = req_ings.difference(user_pantry_set)
                 if len(missing) < len(req_ings): partial_matches.append((recipe, list(missing)))
     return render_template('what_can_i_make.html', perfect_matches=perfect_matches, partial_matches=partial_matches, pantry_input=pantry_input, has_searched=request.method=='POST')
+
+# --- 7. 情侣绑定路由 ---
 
 @app.route('/partner', methods=['GET'])
 @login_required
@@ -287,12 +351,31 @@ def redeem_invite_code():
     flash('绑定成功', 'success')
     return redirect(url_for('partner_page'))
 
+# --- 8. 共享日记路由 ---
+
 @app.route('/journal')
 @login_required
 def journal():
-    if not current_user.partner_id: return redirect(url_for('partner_page'))
+    if not current_user.partner_id:
+        flash('您必须先绑定伴侣才能使用共享日记。', 'error')
+        return redirect(url_for('partner_page'))
+        
+    # 获取年份和月份
+    now = datetime.datetime.now()
+    try:
+        year = int(request.args.get('year', now.year))
+        month = int(request.args.get('month', now.month))
+    except ValueError:
+        year, month = now.year, now.month
+
     user_ids = [current_user.id, current_user.partner_id]
-    entries = JournalEntry.query.filter(JournalEntry.author_id.in_(user_ids)).all()
+    # 构造当月查询字符串 YYYY-MM
+    month_str = f"{year}-{month:02d}"
+    entries = JournalEntry.query.filter(
+        JournalEntry.author_id.in_(user_ids),
+        JournalEntry.date_str.like(f"{month_str}-%")
+    ).all()
+    
     calendar_data = {}
     for entry in entries:
         d = entry.date_str
@@ -301,7 +384,17 @@ def journal():
             calendar_data[d]['me'] = True; calendar_data[d]['me_content'] = entry.content
         else:
             calendar_data[d]['partner'] = True; calendar_data[d]['partner_content'] = entry.content
-    return render_template('journal.html', calendar_data=calendar_data, partner_name=current_user.partner.username)
+            
+    cal_matrix = calendar.monthcalendar(year, month)
+
+    return render_template(
+        'journal.html', 
+        calendar_data=calendar_data,
+        partner_name=current_user.partner.username,
+        year=year,
+        month=month,
+        cal_matrix=cal_matrix
+    )
 
 @app.route('/journal/add', methods=['POST'])
 @login_required
@@ -322,6 +415,8 @@ def add_journal_entry():
              existing = JournalEntry.query.filter_by(date_str=date, author_id=current_user.id).first()
              if existing: existing.content = content; db.session.commit(); return jsonify({'status':'success'})
         return jsonify({'status':'error'}), 500
+
+# --- 9. 纪念册路由 ---
 
 @app.route('/memories')
 @login_required
@@ -367,6 +462,8 @@ def delete_memory(memory_id):
     db.session.delete(mem); db.session.commit()
     flash('删除成功', 'success'); return redirect(url_for('memories'))
 
+# --- 10. 愿望清单路由 ---
+
 @app.route('/wishlist')
 @login_required
 def wishlist():
@@ -398,5 +495,6 @@ def delete_wish(item_id):
     if item.author_id == current_user.id: db.session.delete(item); db.session.commit()
     return redirect(url_for('wishlist'))
 
+# --- 启动器 ---
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

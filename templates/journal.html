@@ -1,74 +1,165 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <h2>📅 共享日记 (2025年 10月 - 模拟)</h2>
-    <p>
+    
+    <!-- 顶部导航栏 -->
+    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <h2 class="text-2xl font-bold text-gray-800">📅 共享日记</h2>
+        
+        <!-- 月份切换器 -->
+        <div class="flex items-center bg-white rounded-lg shadow-sm border p-1">
+            <!-- 上个月 -->
+            {% set prev_month = month - 1 if month > 1 else 12 %}
+            {% set prev_year = year if month > 1 else year - 1 %}
+            <a href="{{ url_for('journal', year=prev_year, month=prev_month) }}" class="p-2 hover:bg-gray-100 rounded-full text-gray-600">
+                <i data-lucide="chevron-left" class="w-5 h-5"></i>
+            </a>
+            
+            <span class="mx-4 font-bold text-lg w-32 text-center">{{ year }}年 {{ month }}月</span>
+            
+            <!-- 下个月 -->
+            {% set next_month = month + 1 if month < 12 else 1 %}
+            {% set next_year = year if month < 12 else year + 1 %}
+            <a href="{{ url_for('journal', year=next_year, month=next_month) }}" class="p-2 hover:bg-gray-100 rounded-full text-gray-600">
+                <i data-lucide="chevron-right" class="w-5 h-5"></i>
+            </a>
+        </div>
+    </div>
+
+    <p class="mb-4 text-gray-600">
         {% if partner_name %}
-            在这里记录您和 <strong>{{ partner_name }}</strong> 的共同回忆。
-            <span class="dot dot-me" style="display: inline-block;"></span> = {{ current_user.username }} (我)
-            <span class="dot dot-partner" style="display: inline-block; margin-left: 10px;"></span> = {{ partner_name }} (TA)
+            <span class="dot dot-me" style="display: inline-block;"></span> = 我
+            <span class="dot dot-partner" style="display: inline-block; margin-left: 10px;"></span> = {{ partner_name }}
         {% endif %}
     </p>
 
-    <!-- 日历 -->
+    <!-- 真实日历网格 -->
     <div class="calendar-grid">
-        <!-- 星期 -->
-        <div class="calendar-header">日</div>
+        <!-- 星期表头 -->
         <div class="calendar-header">一</div>
         <div class="calendar-header">二</div>
         <div class="calendar-header">三</div>
         <div class="calendar-header">四</div>
         <div class="calendar-header">五</div>
-        <div class="calendar-header">六</div>
+        <div class="calendar-header text-rose-500">六</div>
+        <div class="calendar-header text-rose-500">日</div>
         
-        <!-- 模拟 2025-10-01 是周三 -->
-        <div class="calendar-day other-month"><div class="day-number">28</div></div>
-        <div class="calendar-day other-month"><div class="day-number">29</div></div>
-        <div class="calendar-day other-month"><div class="day-number">30</div></div>
-        
-        <!--
-          FIX (V4.2):
-          使用循环动态生成所有天数 (1-31)
-          这是一个简化的循环, 真实的日历需要更复杂的逻辑来处理换行
-          但这个足以测试功能
+        <!-- 
+          遍历后端传来的日历矩阵 
+          week 是一个列表, 如 [0, 0, 1, 2, 3, 4, 5]
         -->
-        {% for day in range(1, 32) %}
-            <!-- 格式化日期字符串, e.g., "2025-10-05" (05 保证了两位数) -->
-            {% set date_str = '2025-10-%02d' | format(day) %}
-            {% set data = calendar_data.get(date_str, {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}) %}
-            
-            <!--
-              FIX (V4.2): 使用 Data Attributes
-              我们不再将复杂的 JSON 注入 onclick 属性.
-              我们把数据安全地存储在 data-* 属性中.
-            -->
-            <div class="calendar-day" 
-                 data-date="{{ date_str }}"
-                 data-me="{{ 'true' if data.me else 'false' }}"
-                 data-partner="{{ 'true' if data.partner else 'false' }}"
-                 data-me-content="{{ data.me_content }}"
-                 data-partner-content="{{ data.partner_content }}"
-                 onclick="openModal(this)"> <!-- onclick 现在只传递元素本身 -->
+        {% for week in cal_matrix %}
+            {% for day in week %}
                 
-                <div class="day-number">{{ day }}</div>
-                <div class="entry-dots">
-                    {% if data.me %}<span class="dot dot-me"></span>{% endif %}
-                    {% if data.partner %}<span class="dot dot-partner"></span>{% endif %}
-                </div>
-            </div>
+                {% if day == 0 %}
+                    <!-- 0 代表空白(上月或下月) -->
+                    <div class="calendar-day other-month"></div>
+                {% else %}
+                    <!-- 真实日期 -->
+                    <!-- 格式化日期字符串 YYYY-MM-DD -->
+                    {% set date_str = '%04d-%02d-%02d' | format(year, month, day) %}
+                    {% set data = calendar_data.get(date_str, {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}) %}
+                    
+                    <div class="calendar-day" 
+                         data-date="{{ date_str }}"
+                         data-me="{{ 'true' if data.me else 'false' }}"
+                         data-partner="{{ 'true' if data.partner else 'false' }}"
+                         data-me-content="{{ data.me_content }}"
+                         data-partner-content="{{ data.partner_content }}"
+                         onclick="openModal(this)">
+                        
+                        <div class="day-number">{{ day }}</div>
+                        <div class="entry-dots">
+                            {% if data.me %}<span class="dot dot-me"></span>{% endif %}
+                            {% if data.partner %}<span class="dot dot-partner"></span>{% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+                
+            {% endfor %}
         {% endfor %}
-        
-        <!-- 下个月的 (模拟) -->
-        <div class="calendar-day other-month"><div class="day-number">1</div></div>
     </div>
 
-    <!--
-      FIX (V4.2):
-      这个脚本块现在只做一件事:
-      把 app.py 传来的 partner_name 存储到 <body> 标签上,
-      这样 base.html 中的 JS 就可以读取它.
-    -->
     <script>
         document.body.dataset.partnerName = "{{ partner_name }}";
+        // 重新激活图标
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     </script>
 {% endblock %}
+```
+
+---
+
+### 第二步：让首页动态变“活”
+
+我们需要修改 `app.py` 的 `index` 路由来查询真实数据，并修改 `index.html` 来显示它们。
+
+#### 1. 修改 `app.py`
+找到 `index()` 路由，**替换**为以下代码：
+
+```python
+@app.route('/')
+@login_required
+def index():
+    # 1. 获取 ID 列表
+    user_ids = [current_user.id]
+    if current_user.partner_id:
+        user_ids.append(current_user.partner_id)
+    
+    # 2. 查询最近的动态 (Activities)
+    activities = []
+    
+    # 查询最近的 3 个菜谱
+    recent_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).order_by(Recipe.id.desc()).limit(3).all()
+    for r in recent_recipes:
+        activities.append({
+            'type': 'recipe',
+            'time': r.id, # 这里偷懒用ID排序, 理想情况应添加 created_at 字段
+            'text': f"{'我' if r.author_id == current_user.id else 'TA'} 添加了新菜谱: {r.name}"
+        })
+        
+    # 查询最近的 3 个回忆
+    recent_memories = Memory.query.filter(Memory.author_id.in_(user_ids)).order_by(Memory.id.desc()).limit(3).all()
+    for m in recent_memories:
+        activities.append({
+            'type': 'memory',
+            'time': m.id,
+            'text': f"{'我' if m.author_id == current_user.id else 'TA'} 添加了新回忆: {m.title}"
+        })
+    
+    # 简单排序并取前 5 个 (混合排序)
+    # 注意: 因为我们没有统一的时间字段, 这里只是简单的混排, 
+    # 真正的生产环境应该给所有表加 created_at 字段
+    activities.sort(key=lambda x: x['time'], reverse=True)
+    latest_activities = activities[:5]
+
+    return render_template('index.html', activities=latest_activities)
+```
+
+#### 2. 修改 `templates/index.html`
+修改“最近动态”部分，使用循环来渲染。
+
+```html
+    <!-- ... 上面的代码不变 ... -->
+
+    <!-- 动态部分 -->
+    <div class="mt-8">
+        <h2 class="text-2xl font-bold mb-4">最近动态</h2>
+        <div class="bg-white rounded-xl shadow-lg p-6 space-y-4">
+            
+            {% for activity in activities %}
+                <div class="border-l-4 
+                    {{ 'border-rose-400' if activity.type == 'recipe' else 'border-blue-400' }} 
+                    pl-4">
+                    <p class="font-semibold">{{ activity.text }}</p>
+                    <!-- 由于没有真实时间字段，暂时不显示时间，或者显示 '近期' -->
+                    <span class="text-sm text-gray-500">近期</span>
+                </div>
+            {% else %}
+                <p class="text-gray-500">还没有动态，快去添加第一个内容吧！</p>
+            {% endfor %}
+            
+        </div>
+    </div>
+
+    <!-- ... 下面的代码不变 ... -->
