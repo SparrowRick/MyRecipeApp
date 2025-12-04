@@ -1,0 +1,21 @@
+{
+  "name": "我们的小窝",
+  "short_name": "小窝",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fffafb",
+  "theme_color": "#f43f5e",
+  "description": "专属于我们两人的情侣空间",
+  "icons": [
+    {
+      "src": "/static/icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
