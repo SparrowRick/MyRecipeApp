@@ -1,10 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
     <div class="max-w-2xl mx-auto">
+        
+        <!-- 顶部导航栏：左边是返回，右边就是【历史回顾】入口 -->
+        <div class="flex justify-between items-center mb-6">
+            <a href="{{ url_for('index') }}" class="text-gray-500 hover:text-gray-700 flex items-center">
+                <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i> 返回首页
+            </a>
+            
+            <!-- ！！！入口在这里！！！ -->
+            <a href="{{ url_for('daily_history') }}" class="text-rose-500 hover:text-rose-700 font-semibold flex items-center">
+                <i data-lucide="history" class="w-4 h-4 mr-1"></i> 历史回顾
+            </a>
+        </div>
+
         <div class="text-center mb-8">
-            <span class="inline-block bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-sm font-bold mb-2">
-                📅 每日一问 · {{ question.date_str }}
-            </span>
+            <!-- 来源和日期标签 -->
+            <div class="flex justify-center gap-2 mb-3">
+                <span class="inline-block bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold">
+                    📅 {{ question.date_str }}
+                </span>
+                <!-- 根据来源显示不同颜色 -->
+                <span class="inline-block px-3 py-1 rounded-full text-xs font-bold
+                    {% if 'AI' in question.source %} bg-purple-100 text-purple-600 {% else %} bg-yellow-100 text-yellow-700 {% endif %}">
+                    ✨ {{ question.source }}
+                </span>
+            </div>
             <h2 class="text-2xl md:text-3xl font-bold text-gray-800">{{ question.content }}</h2>
         </div>
 
@@ -22,12 +43,12 @@
                     <button onclick="document.getElementById('edit-form').style.display='block'" class="text-sm text-blue-500 mt-2 hover:underline">修改回答</button>
                 {% else %}
                     <form action="{{ url_for('answer_daily_question', question_id=question.id) }}" method="POST">
-                        <textarea name="content" rows="3" class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-300" placeholder="写下你的想法..."></textarea>
+                        <textarea name="content" rows="3" class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-300" placeholder="写下你的想法..." required></textarea>
                         <button type="submit" class="btn mt-2 w-full">提交回答</button>
                     </form>
                 {% endif %}
                 
-                <!-- 修改表单 (隐藏) -->
+                <!-- 修改表单 (默认隐藏) -->
                 {% if my_answer %}
                 <form id="edit-form" action="{{ url_for('answer_daily_question', question_id=question.id) }}" method="POST" style="display:none;" class="mt-4">
                     <textarea name="content" rows="3" class="w-full border rounded-lg p-3">{{ my_answer.content }}</textarea>
@@ -50,7 +71,7 @@
                         🎉 双方已完成，答案已解锁！快去和TA讨论一下吧！
                     </div>
                 {% else %}
-                    <!-- 状态 B: 未解锁 -->
+                    <!-- 状态 B: 未解锁 (模糊遮罩) -->
                     <div class="filter blur-sm select-none">
                         <p class="text-lg text-gray-400">
                             这里是对方的回答内容，但是你看不到。
@@ -75,55 +96,10 @@
 
         </div>
     </div>
+    <!-- 激活图标 -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        });
+    </script>
 {% endblock %}
-```
-
-#### 第3步：修改 `templates/base.html` (添加导航)
-
-请在 `base.html` 的导航栏中，添加一个新的链接：
-
-```html
-<!-- 在愿望清单下方 -->
-<li><a href="{{ url_for('daily_question') }}" class="nav-link {{ 'active' if request.endpoint.startswith('daily_question') else '' }}">
-    <i data-lucide="message-circle-question" class="w-4 h-4 sm:mr-2"></i>
-    <span class="hidden sm:inline">每日一问</span>
-</a></li>
-```
-
----
-
-### 【阶段二 (V5.0)：本地测试】
-
-1.  **清理本地环境**：停止服务，删除 `recipes.db` 和 `migrations` 文件夹。
-2.  **初始化数据库**：
-    ```powershell
-    # 激活venv
-    $env:FLASK_APP = "app.py"
-    flask db init
-    flask db migrate -m "V5.0 Add Daily Question"
-    flask db upgrade
-    ```
-3.  **运行应用**：`python app.py`
-4.  **测试流程**：
-    * 注册 `test1`, `test2` 并互相绑定。
-    * `test1` 进入“每日一问”，提交回答。
-    * 验证：`test1` 看不到 `test2` 的答案（显示“TA还没有回答”）。
-    * `test2` 进入“每日一问”。
-    * 验证：`test2` 看到 `test1` “已经回答”，但内容被模糊锁定。
-    * `test2` 提交回答。
-    * **关键验证**：双方页面刷新后，锁解开，能看到彼此的真心话！
-
----
-
-### 【阶段三 (V5.0)：服务器部署 (手动手术)】
-
-当本地测试通过后，您可以推送到服务器。
-
-**服务器端手动升级数据库命令（请在 `systemctl stop` 后运行）：**
-
-```bash
-# 1. 创建 DailyQuestion 表
-sqlite3 recipes.db "CREATE TABLE daily_question (id INTEGER NOT NULL, content VARCHAR(200) NOT NULL, date_str VARCHAR(10) NOT NULL, PRIMARY KEY (id), UNIQUE (date_str));"
-
-# 2. 创建 DailyAnswer 表
-sqlite3 recipes.db "CREATE TABLE daily_answer (id INTEGER NOT NULL, content TEXT NOT NULL, user_id INTEGER NOT NULL, question_id INTEGER NOT NULL, PRIMARY KEY (id), FOREIGN KEY(user_id) REFERENCES user (id), FOREIGN KEY(question_id) REFERENCES daily_question (id));"

@@ -176,6 +176,7 @@ class DailyQuestion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.String(200), nullable=False)
     date_str = db.Column(db.String(10), unique=True, nullable=False) 
+    source = db.Column(db.String(20), default='随机题库')
     answers = db.relationship('DailyAnswer', backref='question', lazy=True, cascade="all, delete-orphan")
 
 class DailyAnswer(db.Model):
@@ -404,7 +405,7 @@ def delete_wish(item_id):
     if item and item.author_id == current_user.id: db.session.delete(item); db.session.commit()
     return redirect(url_for('wishlist'))
 
-# --- V5.0 NEW: 每日一问路由 ---
+# --- V5.2 UPDATE: 每日一问 (带来源标注) ---
 @app.route('/daily_question')
 @login_required
 def daily_question():
@@ -417,14 +418,16 @@ def daily_question():
     question = DailyQuestion.query.filter_by(date_str=today_str).first()
     
     if not question:
-        # 2. 优先尝试 AI 生成
+        # --- AI 生成逻辑 ---
         new_content = generate_question_from_ai()
+        source = "AI 生成" # 标记来源
         
-        # 3. 失败则使用本地题库
+        # 兜底
         if not new_content:
             new_content = random.choice(QUESTIONS_POOL)
+            source = "随机题库" # 标记来源
             
-        question = DailyQuestion(content=new_content, date_str=today_str)
+        question = DailyQuestion(content=new_content, date_str=today_str, source=source)
         db.session.add(question)
         db.session.commit()
     
@@ -438,6 +441,35 @@ def daily_question():
                            partner_answer=partner_answer,
                            is_unlocked=is_unlocked,
                            partner_name=current_user.partner.username)
+
+# --- V5.2 NEW: 历史回顾路由 ---
+@app.route('/daily_question/history')
+@login_required
+def daily_history():
+    if not current_user.partner_id:
+        return redirect(url_for('partner_page'))
+        
+    # 1. 获取所有历史问题 (按日期倒序)
+    all_questions = DailyQuestion.query.order_by(DailyQuestion.date_str.desc()).all()
+    
+    completed_history = []
+    
+    for q in all_questions:
+        # 2. 查找这个问题的回答
+        my_ans = DailyAnswer.query.filter_by(question_id=q.id, user_id=current_user.id).first()
+        partner_ans = DailyAnswer.query.filter_by(question_id=q.id, user_id=current_user.partner_id).first()
+        
+        # 3. 核心逻辑：只有双方都回答了，才算"历史记录"
+        if my_ans and partner_ans:
+            completed_history.append({
+                'date': q.date_str,
+                'content': q.content,
+                'source': q.source,
+                'my_answer': my_ans.content,
+                'partner_answer': partner_ans.content
+            })
+            
+    return render_template('daily_history.html', history=completed_history)
 
 @app.route('/daily_question/answer/<int:question_id>', methods=['POST'])
 @login_required
