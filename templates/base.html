@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>情侣空间</title>
+
+    <!-- --- V4.4 FIX: 补全 PWA 图标标签 (关键!) --- -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <!-- iOS 专用图标 (没有这一行，iPhone 上就没有图标) -->
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon.png') }}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#f43f5e">
+    <!-- ------------------------------------------- -->
     
     <!-- V4.3: 使用国内 Staticfile CDN 加速 Tailwind -->
     <link href="https://cdn.staticfile.org/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
