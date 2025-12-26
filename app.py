@@ -31,6 +31,11 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 # 请在这里填入您的阿里云 DashScope API Key
 app.config['DASHSCOPE_API_KEY'] = 'sk-3e0826f5b610402d849223ef6029c421' 
 
+# --- NEW: 关键修复！增加 SQLite 等待时间 ---
+# 默认只有 5秒，遇到并发容易报错。改成 30秒。
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'connect_args': {'timeout': 30}
+
 db = SQLAlchemy(app)
 migrate = Migrate(app, db) 
 login_manager = LoginManager(app)

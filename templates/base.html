@@ -288,25 +288,63 @@
         window.onclick = function(event) {
             if (event.target == modal) { closeModal(); }
         }
-        async function saveJournal() {
+       async function saveJournal() {
             const date = journalFormDate.value;
             const content = journalFormContent.value;
+            
+            // 1. 获取按钮对象
+            const saveBtn = document.querySelector('#journal-form button[type="submit"]');
+            const cancelBtn = document.querySelector('#journal-form button[type="button"]');
+            const originalText = saveBtn.innerText;
+            
+            // 2. 立即禁用按钮，防止双击！(关键修复)
+            saveBtn.disabled = true;
+            cancelBtn.disabled = true;
+            saveBtn.innerText = "保存中...";
+            saveBtn.style.opacity = "0.7";
+
             try {
                 const response = await fetch("{{ url_for('add_journal_entry') }}", {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ date: date, content: content })
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        date: date,
+                        content: content
+                    })
                 });
-                const result = await response.json();
+
+                // 尝试解析 JSON
+                const text = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(text);
+                } catch (e) {
+                    // 如果不是 JSON，可能是 500/502 错误页
+                    console.error("服务器返回非JSON:", text);
+                    throw new Error(`服务器繁忙 (状态码: ${response.status})`);
+                }
+
                 if (response.ok) {
+                    // 成功！
                     closeModal();
                     window.location.reload(); 
                 } else {
-                    alert('错误: ' + result.message);
+                    // 失败
+                    alert('保存失败: ' + result.message);
                 }
             } catch (error) {
                 console.error('保存失败:', error);
-                alert('保存日记时发生网络错误。');
+                // 3. 更友好的错误提示
+                alert('网络连接不稳定，但数据可能已保存。\n请刷新页面查看。');
+            } finally {
+                // 4. 无论成功失败，恢复按钮状态
+                saveBtn.disabled = false;
+                cancelBtn.disabled = false;
+                saveBtn.innerText = originalText;
+                saveBtn.style.opacity = "1";
             }
             return false; 
         }
