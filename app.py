@@ -4,7 +4,9 @@ import secrets
 import datetime
 import calendar
 import re
-import random # 确保导入 random
+import random
+import requests
+import json
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify 
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate 
@@ -60,45 +62,69 @@ QUESTIONS_POOL = [
 
 # --- NEW: AI 生成函数 (通义千问) ---
 def generate_question_from_ai():
-    """
-    使用阿里云通义千问 (Qwen) 生成每日一问
-    """
     api_key = app.config.get('DASHSCOPE_API_KEY')
     if not api_key or 'sk-' not in api_key:
-        print("警告: 未配置有效的 DASHSCOPE_API_KEY，将使用本地题库。")
+        print("警告: 未配置有效的 DASHSCOPE_API_KEY")
         return None
 
-    try:
-        # 1. 构造提示词
-        prompt = """
-        请生成一个适合情侣之间互相询问的每日互动问题。
-        要求：
-        1. 问题要温馨、有趣、深入或者是关于未来的畅想。
-        2. 语气轻松，能够引发两人的对话和思考。
-        3. 只返回问题本身，不要包含任何"好的"、"当然"等前缀或引号。
-        4. 必须是中文。
-        例子："如果我们可以瞬间移动，你最想带我去哪里？"
-        """
-        
-        # 2. 调用通义千问 API (qwen-turbo 是性价比最高的模型)
-        response = dashscope.Generation.call(
-            model=dashscope.Generation.Models.qwen_turbo,
-            prompt=prompt,
-            api_key=api_key
-        )
+    # 1. 定义多样化的主题库 (强制 AI 聚焦特定领域)
+    topics = [
+        "童年回忆与成长经历", "具体的未来规划", "价值观与人生哲学", "旅行中的突发状况", 
+        "对彼此的初印象与变化", "生活习惯与怪癖", "假如世界末日/假如中奖 (脑洞假设)", 
+        "性与亲密关系", "工作挑战与职业理想", "家庭关系与父母", 
+        "最尴尬或最糗的时刻", "最自豪的成就", "内心深处的恐惧", 
+        "精神世界与梦想", "日常琐事与家务分工", "对于衰老与死亡的看法"
+    ]
+    
+    # 2. 定义不同的提问风格 (调整语气)
+    styles = [
+        "幽默风趣的", "深情浪漫的", "严肃深刻的", "轻松随意的", 
+        "充满好奇心的", "怀旧感伤的", "脑洞大开的", "犀利直接的"
+    ]
+    
+    # 3. 随机抽取
+    selected_topic = random.choice(topics)
+    selected_style = random.choice(styles)
+    
+    print(f"DEBUG: 今天 AI 的生成方向 -> 主题: {selected_topic}, 风格: {selected_style}")
 
-        # 3. 解析结果
-        if response.status_code == HTTPStatus.OK:
-            question_text = response.output.text.strip()
-            # 简单的清洗
-            question_text = question_text.replace('"', '').replace('“', '').replace('”', '')
-            return question_text
-        else:
-            print(f"AI 请求失败: Code {response.code}, Message {response.message}")
-            return None
-            
+    url = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation'
+    headers = { 'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json' }
+    
+    # 4. 构造更具体的 Prompt
+    prompt_text = f"""
+    请生成一个适合情侣之间互相询问的每日互动问题。
+    
+    【强制要求】：
+    1. 核心主题必须关于：“{selected_topic}”。
+    2. 提问风格必须是：“{selected_style}”。
+    3. 避免生成那种泛泛而谈的“你最喜欢什么...”的问题，要具体、有场景感。
+    4. 问题要能引发两人的深入对话，而不是简单的“是/否”回答。
+    5. 只返回问题本身，不要包含任何前缀、引号或解释。
+    6. 必须是中文。
+    """
+    
+    # 为了增加随机性，提高 temperature 参数 (0.0 - 1.0, 越高越随机)
+    data = { 
+        "model": "qwen-turbo", 
+        "input": { "messages": [{"role": "user", "content": prompt_text}] }, 
+        "parameters": { 
+            "result_format": "message",
+            "temperature": 0.85,  # 提高随机性
+            "top_p": 0.8 
+        } 
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(data), timeout=10)
+        if response.status_code == 200:
+            result = response.json()
+            if 'output' in result and 'choices' in result['output']:
+                content = result['output']['choices'][0]['message']['content']
+                return content.strip().replace('"', '').replace('“', '').replace('”', '')
+        return None
     except Exception as e:
-        print(f"AI 生成发生异常: {e}")
+        print(f"AI 生成异常: {e}")
         return None
 
 
