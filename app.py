@@ -33,10 +33,11 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 # 请在这里填入您的阿里云 DashScope API Key
 app.config['DASHSCOPE_API_KEY'] = 'sk-3e0826f5b610402d849223ef6029c421' 
 
-# --- NEW: 关键修复！增加 SQLite 等待时间 ---
-# 默认只有 5秒，遇到并发容易报错。改成 30秒。
+# --- NEW: 关键修复！增加 SQLite 等待时间与连接池容错 ---
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'connect_args': {'timeout': 30} 
+    'connect_args': {'timeout': 30},
+    'pool_recycle': 280,
+    'pool_pre_ping': True
 }
 
 db = SQLAlchemy(app)
@@ -140,6 +141,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     recipes = db.relationship('Recipe', backref='author', lazy=True, cascade="all, delete-orphan")
     invite_code = db.Column(db.String(6), unique=True, nullable=True) 
+    bark_id = db.Column(db.String(100), nullable=True) # NEW: Bark 推送 ID
     partner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) 
     partner = db.relationship('User', remote_side=[id], primaryjoin=partner_id == id, uselist=False, lazy=True)
     journal_entries = db.relationship('JournalEntry', backref='author', lazy=True)
@@ -201,6 +203,14 @@ class WishlistItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.String(300), nullable=False)
     is_completed = db.Column(db.Boolean, default=False, nullable=False)
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+# --- V5.4 NEW: 冰箱贴模型 (纪念日/倒数日) ---
+class FridgeItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    target_date = db.Column(db.Date, nullable=False) # 目标日期
+    item_type = db.Column(db.String(20), nullable=False) # 'anniversary' 或 'countdown'
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 # --- V5.0 NEW: 每日一问模型 ---
@@ -266,15 +276,36 @@ def index():
     recent_journals = JournalEntry.query.filter(JournalEntry.author_id.in_(user_ids)).order_by(JournalEntry.id.desc()).limit(3).all()
     for j in recent_journals: activities.append({'type': 'journal', 'time': j.id, 'text': f"{j.author.username} 写了一篇日记 ({j.date_str})"})
     activities.sort(key=lambda x: x['time'], reverse=True)
-    return render_template('index.html', activities=activities[:10])
+    
+    # 获取冰箱贴
+    fridge_items = FridgeItem.query.filter(FridgeItem.author_id.in_(user_ids)).order_by(FridgeItem.target_date.asc()).all()
+    
+    # 计算天数
+    today_date = datetime.date.today()
+    fridge_data = []
+    for item in fridge_items:
+        diff_days = (item.target_date - today_date).days
+        fridge_data.append({
+            'id': item.id,
+            'title': item.title,
+            'target_date': item.target_date.strftime('%Y-%m-%d'),
+            'type': item.item_type,
+            'author': User.query.get(item.author_id).username,
+            'diff_days': abs(diff_days),
+            'is_past': diff_days <= 0
+        })
+    
+    return render_template('index.html', activities=activities[:10], fridge_data=fridge_data)
 
 # (菜谱路由保持不变: recipes_list, add_recipe, recipe_detail, delete_recipe, add_log, what_can_i_make)
 # ... (为简洁省略，请保留原代码) ...
 @app.route('/recipes')
 @login_required
 def recipes_list():
-    user_ids = [current_user.id]; 
+    user_ids = [current_user.id]
     if current_user.partner_id: user_ids.append(current_user.partner_id)
+    system_user = User.query.filter_by(username="GitHub how to cook").first()
+    if system_user: user_ids.append(system_user.id)
     all_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).order_by(Recipe.id.desc()).all() 
     return render_template('recipes_list.html', recipes=all_recipes)
 @app.route('/add_recipe', methods=['GET', 'POST'])
@@ -322,6 +353,8 @@ def add_log(recipe_id):
 def what_can_i_make():
     user_ids = [current_user.id]
     if current_user.partner_id: user_ids.append(current_user.partner_id)
+    system_user = User.query.filter_by(username="GitHub how to cook").first()
+    if system_user: user_ids.append(system_user.id)
     perfect_matches = []; partial_matches = []; pantry_input = ""
     if request.method == 'POST':
         pantry_input = request.form['pantry']
@@ -334,6 +367,73 @@ def what_can_i_make():
                 missing = req_ings.difference(user_pantry_set)
                 if len(missing) < len(req_ings): partial_matches.append((recipe, list(missing)))
     return render_template('what_can_i_make.html', perfect_matches=perfect_matches, partial_matches=partial_matches, pantry_input=pantry_input, has_searched=request.method=='POST')
+
+# --- V5.3 NEW: AI 菜单推荐 ---
+@app.route('/ai_menu', methods=['GET', 'POST'])
+@login_required
+def ai_menu():
+    result = None
+    if request.method == 'POST':
+        people_count = request.form.get('people_count', '2')
+        preferences = request.form.get('preferences', '')
+        
+        # 获取所有可用的本地菜谱
+        user_ids = [current_user.id]
+        if current_user.partner_id:
+            user_ids.append(current_user.partner_id)
+            
+        system_user = User.query.filter_by(username="GitHub how to cook").first()
+        if system_user:
+            user_ids.append(system_user.id)
+            
+        recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).all()
+        # 简单的随机打乱一下，防止总是用前面的菜
+        # 将菜谱名字和对应的页面链接提供给 AI
+        recipe_items = [f"{r.name}(链接ID:{r.id})" for r in recipes]
+        random.shuffle(recipe_items)
+        
+        api_key = app.config.get('DASHSCOPE_API_KEY')
+        if not api_key or 'sk-' not in api_key:
+            flash('未配置有效的 DASHSCOPE_API_KEY，无法使用 AI 功能', 'error')
+            return render_template('ai_menu.html', result=None)
+            
+        local_recipes_str = "、".join(recipe_items[:200])  # 提供前200个
+        
+        prompt_text = f"""
+        你是一位专业的家庭主厨。我今天需要准备一桌丰盛的饭菜。
+        要求：
+        1. 就餐人数：{people_count}
+        2. 饮食偏好/要求：{preferences}
+        3. 请绝对优先从以下本地菜谱库中挑选菜品：【{local_recipes_str}】。
+        4. 【重要】如果挑选了本地菜谱，请务必严格使用 Markdown 链接格式输出该菜名，链接地址为 `/recipe/链接ID`。
+           例如选中了 "红烧肉(链接ID:15)"，在你的输出中任何提到它的地方请写成 `[红烧肉](/recipe/15)`，让用户可以点击跳转。如果本地不够吃，额外发挥的非本地菜直接写名字即可。
+        5. 请输出：(1) 推荐菜单名称列表；(2) 所有推荐菜所需的材料统筹清单；(3) 简短的做菜顺序建议。
+        """
+        
+        url = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation'
+        headers = { 'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json' }
+        data = { 
+            "model": "qwen-turbo", 
+            "input": { "messages": [{"role": "user", "content": prompt_text}] }, 
+            "parameters": { 
+                "result_format": "message",
+                "temperature": 0.8
+            } 
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=15)
+            if response.status_code == 200:
+                res_json = response.json()
+                if 'output' in res_json and 'choices' in res_json['output']:
+                    result = res_json['output']['choices'][0]['message']['content']
+            else:
+                flash(f'AI 接口返回错误: {response.text}', 'error')
+        except Exception as e:
+            flash(f'请求 AI 异常: {e}', 'error')
+            
+    # 如果用户没有配置过，可以把 Markdown 渲染一下，但为了简单，我们在前端显示
+    return render_template('ai_menu.html', result=result)
 
 # (Partner, Journal, Memory, Wishlist 路由保持不变)
 @app.route('/partner', methods=['GET'])
@@ -355,6 +455,26 @@ def redeem_invite_code():
     if target and target.id != current_user.id:
         target.partner_id = current_user.id; current_user.partner_id = target.id; target.invite_code = None; db.session.commit()
     return redirect(url_for('partner_page'))
+
+@app.route('/partner/update_bark', methods=['POST'])
+@login_required
+def update_bark():
+    bark_input = request.form.get('bark_id', '').strip()
+    bark_id = bark_input
+    
+    # 支持用户直接粘贴整个 URL
+    if bark_input.startswith('http'):
+        match = re.search(r'api\.day\.app/([^/]+)', bark_input)
+        if match:
+            bark_id = match.group(1)
+        else:
+            bark_id = bark_input.split('/')[-1] # fallback
+            
+    current_user.bark_id = bark_id if bark_id else None
+    db.session.commit()
+    flash('Bark ID 已更新！', 'success')
+    return redirect(url_for('partner_page'))
+
 @app.route('/journal')
 @login_required
 def journal():
@@ -378,8 +498,48 @@ def add_journal_entry():
     existing = JournalEntry.query.filter_by(date_str=date, author_id=current_user.id).first()
     if existing: existing.content = content
     else: db.session.add(JournalEntry(date_str=date, content=content, author_id=current_user.id))
-    db.session.commit()
-    return jsonify({'status':'success'})
+    
+    # 并发和锁保护
+    try:
+        db.session.commit()
+        return jsonify({'status':'success'})
+    except Exception as e:
+        db.session.rollback()
+        print(f"Journal save error: {e}")
+        return jsonify({'status': 'error', 'message': '数据库繁忙，请重试保存'}), 500
+
+# --- V5.4 NEW: 冰箱贴路由 ---
+@app.route('/fridge/add', methods=['POST'])
+@login_required
+def add_fridge_item():
+    title = request.form.get('title')
+    target_date_str = request.form.get('target_date')
+    item_type = request.form.get('item_type') # 'anniversary' 或 'countdown'
+    
+    if title and target_date_str and item_type:
+        try:
+            target_date = datetime.datetime.strptime(target_date_str, '%Y-%m-%d').date()
+            new_item = FridgeItem(title=title, target_date=target_date, item_type=item_type, author_id=current_user.id)
+            db.session.add(new_item)
+            db.session.commit()
+            flash('冰箱贴添加成功！', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'添加失败: {e}', 'error')
+    
+    return redirect(url_for('index'))
+
+@app.route('/fridge/delete/<int:item_id>', methods=['POST'])
+@login_required
+def delete_fridge_item(item_id):
+    item = FridgeItem.query.get_or_404(item_id)
+    # 允许本人或伴侣删除
+    if item.author_id == current_user.id or item.author_id == current_user.partner_id:
+        db.session.delete(item)
+        db.session.commit()
+        flash('冰箱贴已删除', 'success')
+    return redirect(url_for('index'))
+
 @app.route('/memories')
 @login_required
 def memories():
@@ -520,6 +680,16 @@ def answer_daily_question(question_id):
         flash('回答已提交！', 'success')
         
     db.session.commit()
+    
+    # 触发 Bark 推送给伴侣
+    if current_user.partner and current_user.partner.bark_id:
+        try:
+            msg = f"{current_user.username} 刚刚回答了今日问答，快去看看TA说了什么吧！"
+            url = f"https://api.day.app/{current_user.partner.bark_id}/情侣小窝/{msg}"
+            requests.get(url, timeout=5)
+        except Exception as e:
+            print(f"Bark push failed: {e}")
+
     return redirect(url_for('daily_question'))
 
 if __name__ == '__main__':

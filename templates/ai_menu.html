@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 mb-8">
+        <h2 class="text-2xl font-bold flex items-center text-rose-500 mb-6">
+            <i data-lucide="sparkles" class="w-6 h-6 mr-2"></i>
+            AI 智能菜单推荐
+        </h2>
+        
+        <p class="text-gray-600 mb-6">不知道今天吃什么？输入您的人数和口味偏好，AI主厨会结合我们的本地菜谱，为您生成一套完美的菜单及准备建议！</p>
+        
+        <form method="POST" class="space-y-5">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="form-group mb-0">
+                    <label for="people_count" class="text-sm text-gray-700">就餐人数 (可点选或自行输入内容)</label>
+                    <input type="text" name="people_count" id="people_count" list="people_options" value="2人" class="w-full mt-1 px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-200 focus:border-rose-400 focus:outline-none transition-colors">
+                    <datalist id="people_options">
+                        <option value="1人">
+                        <option value="2人">
+                        <option value="3-4人">
+                        <option value="5人以上">
+                    </datalist>
+                </div>
+                
+                <div class="form-group mb-0">
+                    <label for="preferences" class="text-sm text-gray-700">口味偏好 / 避口</label>
+                    <input type="text" id="preferences" name="preferences" placeholder="例如：少油少盐、喜欢吃辣、不要香菜、多点海鲜..." class="w-full mt-1 px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-200 focus:border-rose-400 focus:outline-none transition-colors">
+                </div>
+            </div>
+            
+            <button type="submit" class="w-full bg-rose-500 hover:bg-rose-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all shadow-md hover:shadow-lg">
+                <i data-lucide="chef-hat" class="w-5 h-5 mr-2"></i> 帮我生成菜单
+            </button>
+        </form>
+    </div>
+
+    {% if result %}
+    <div class="bg-gradient-to-br from-orange-50 to-rose-50 rounded-xl shadow-lg border border-rose-100 p-6 md:p-8 relative overflow-hidden">
+        <div class="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+            <i data-lucide="utensils" class="w-32 h-32"></i>
+        </div>
+        
+        <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <i data-lucide="list-checks" class="text-rose-500 w-5 h-5 mr-2"></i>
+            您的专属菜单
+        </h3>
+        
+        <!-- 使用简单的 pre-wrap 或者将 markdown 转换为 HTML -->
+        <div class="prose prose-rose max-w-none text-gray-700 bg-white/70 p-6 rounded-lg backdrop-blur-sm whitespace-pre-wrap font-sans text-base leading-relaxed border border-white/50 shadow-sm" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">{{ result }}</div>
+        
+        <div class="mt-6 flex justify-end">
+            <button onclick="window.print()" class="text-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-md flex items-center shadow-sm transition-colors">
+                <i data-lucide="printer" class="w-4 h-4 mr-1.5"></i> 打印菜单
+            </button>
+        </div>
+    </div>
+    {% elif request.method == 'POST' %}
+    <div class="text-center py-10">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-rose-200 border-t-rose-500 mb-2"></div>
+        <p class="text-gray-500">正在与 AI 主厨沟通中，请稍候...</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

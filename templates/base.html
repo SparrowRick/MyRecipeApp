@@ -143,6 +143,10 @@
                         <i data-lucide="coffee" class="w-4 h-4 mr-1.5"></i>菜谱
                     </a></li>
                     
+                    <li><a href="{{ url_for('ai_menu') }}" class="nav-link {{ 'active' if request.endpoint == 'ai_menu' else '' }}">
+                        <i data-lucide="sparkles" class="w-4 h-4 mr-1.5"></i>AI菜单
+                    </a></li>
+                    
                     <!-- NEW: 每日一问入口 -->
                     <li><a href="{{ url_for('daily_question') }}" class="nav-link {{ 'active' if request.endpoint.startswith('daily_question') else '' }}">
                         <i data-lucide="message-circle-question" class="w-4 h-4 mr-1.5"></i>每日一问

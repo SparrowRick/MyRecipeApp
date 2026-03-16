@@ -14,7 +14,23 @@
         <div class="invite-box">
             <h3>您已绑定成功！</h3>
             <p>您当前的伴侣是: <strong>{{ current_user.partner.username }}</strong></p>
-            <p style="color: #555;">(未来您可以在这里管理共享设置)</p>
+        </div>
+        
+        <br>
+        
+        <div class="invite-box">
+            <h3>📱 Bark 消息推送设置</h3>
+            <p>当 TA 回答每日问答等互动时，您可以收到手机通知。</p>
+            <form action="{{ url_for('update_bark') }}" method="POST" style="margin-top: 15px;">
+                <div class="form-group" style="text-align: left;">
+                    <label for="bark_id">您的 Bark ID (例如: xxxxx...):</label>
+                    <input type="text" id="bark_id" name="bark_id" value="{{ current_user.bark_id or '' }}" placeholder="留空则关闭推送">
+                </div>
+                <button type="submit" class="btn">保存设置</button>
+            </form>
+            <p style="font-size: 0.8em; color: #888; margin-top: 10px;">
+                在 iOS App Store 搜索 "Bark"，打开 App 即可提取您的专属 ID。填写后，当伴侣回答问题时您会收到推送。
+            </p>
         </div>
     
     <!-- 

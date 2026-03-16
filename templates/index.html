@@ -9,32 +9,114 @@
         <p class="text-gray-600 mt-2">接下来的日子也要一起走过！</p>
     </div>
 
-    <!-- 2. 快捷入口 -->
-    <!-- 这里我们将网格改为 5 列，或者让它自动换行 -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mt-8">
+    <!-- NEW: 冰箱贴 (倒数日/纪念日) -->
+    <div class="mt-8 bg-yellow-50 rounded-xl shadow border border-yellow-200 p-6 relative overflow-hidden">
+        <!-- 装饰图案 -->
+        <div class="absolute -top-4 -right-4 opacity-10 pointer-events-none">
+            <i data-lucide="snowflake" class="w-32 h-32 text-yellow-900"></i>
+        </div>
         
-        <a href="{{ url_for('memories') }}" class="shortcut-card">
+        <div class="flex justify-between items-center mb-4 relative z-10">
+            <h2 class="text-xl font-bold flex items-center text-yellow-800">
+                <i data-lucide="sticker" class="w-5 h-5 mr-2"></i>冰箱贴 (纪念与期待)
+            </h2>
+            <button onclick="document.getElementById('addFridgeModal').style.display='block'" class="text-sm bg-white hover:bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-full shadow-sm border border-yellow-300 font-medium transition-colors">
+                + 贴一张
+            </button>
+        </div>
+        
+        {% if fridge_data %}
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {% for item in fridge_data %}
+            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 {{ 'border-rose-400' if item.type == 'anniversary' else 'border-blue-400' }} relative group transform transition hover:-translate-y-1">
+                <!-- 图钉装饰 -->
+                <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 w-4 h-4 rounded-full shadow-sm {{ 'bg-rose-500' if item.type == 'anniversary' else 'bg-blue-500' }}"></div>
+                
+                <form action="{{ url_for('delete_fridge_item', item_id=item.id) }}" method="POST" class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button type="submit" class="text-red-400 hover:text-red-600" title="删除" onclick="return confirm('确定撕掉这张冰箱贴吗？')">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </form>
+                
+                <h3 class="text-sm font-semibold text-gray-700 mb-2 truncate" title="{{ item.title }}">{{ item.title }}</h3>
+                <div class="text-2xl font-bold {{ 'text-rose-500' if item.type == 'anniversary' else 'text-blue-500' }} text-center my-2">
+                    {% if item.is_past %}
+                        <span class="text-sm font-normal text-gray-500">已过</span> {{ item.diff_days }} <span class="text-sm font-normal text-gray-500">天</span>
+                    {% else %}
+                        <span class="text-sm font-normal text-gray-500">还有</span> {{ item.diff_days }} <span class="text-sm font-normal text-gray-500">天</span>
+                    {% endif %}
+                </div>
+                <div class="text-xs text-center text-gray-400">
+                    {{ item.target_date }} 
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-6 text-yellow-700 opacity-60 border-2 border-dashed border-yellow-200 rounded-lg">
+            冰箱上空空的，快去贴上你们的重要日子吧！
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 新增冰箱贴 Modal -->
+    <div id="addFridgeModal" class="modal">
+        <div class="modal-content border-t-4 border-yellow-400">
+            <span class="modal-close" onclick="document.getElementById('addFridgeModal').style.display='none'">&times;</span>
+            <h3 class="mb-4 text-xl font-bold flex items-center text-yellow-800">
+                <i data-lucide="sticker" class="w-5 h-5 mr-2"></i>新增重要日子
+            </h3>
+            <form action="{{ url_for('add_fridge_item') }}" method="POST">
+                <div class="form-group">
+                    <label>这是什么日子？</label>
+                    <input type="text" name="title" required placeholder="例如：恋爱一周年、一起去三亚...">
+                </div>
+                <div class="form-group grid grid-cols-2 gap-4">
+                    <div>
+                        <label>日期</label>
+                        <input type="date" name="target_date" required>
+                    </div>
+                    <div>
+                        <label>类型</label>
+                        <select name="item_type" required class="w-full p-2 border border-gray-300 rounded-md">
+                            <option value="anniversary">纪念日 (已发生)</option>
+                            <option value="countdown">倒数日 (未发生)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end">
+                    <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg shadow font-medium">贴上冰箱</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. 快捷入口 -->
+    <!-- FIX: 调整为 flex 自动换行或者更宽松的 grid -->
+    <div class="flex flex-wrap gap-4 mt-8 justify-center sm:justify-between">
+        
+        <a href="{{ url_for('memories') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
             <i data-lucide="gallery-thumbnails" class="w-10 h-10"></i>
             <span>纪念册</span>
         </a>
         
-        <a href="{{ url_for('wishlist') }}" class="shortcut-card">
+        <a href="{{ url_for('wishlist') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
             <i data-lucide="list-checks" class="w-10 h-10"></i>
             <span>愿望清单</span>
         </a>
         
-        <a href="{{ url_for('journal') }}" class="shortcut-card">
+        <a href="{{ url_for('journal') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
             <i data-lucide="book-heart" class="w-10 h-10"></i>
             <span>共享日记</span>
         </a>
         
-        <a href="{{ url_for('recipes_list') }}" class="shortcut-card">
+        <a href="{{ url_for('recipes_list') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
             <i data-lucide="utensils-crossed" class="w-10 h-10"></i>
             <span>共享菜谱</span>
         </a>
         
         <!-- NEW: 每日一问卡片 -->
-        <a href="{{ url_for('daily_question') }}" class="shortcut-card">
+        <a href="{{ url_for('daily_question') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
             <i data-lucide="message-circle-question" class="w-10 h-10"></i>
             <span>每日一问</span>
         </a>
@@ -42,15 +124,15 @@
         <style>
             .shortcut-card {
                 display: flex; flex-direction: column; align-items: center; justify-content: center;
-                padding: 24px; background-color: white; border-radius: 12px;
+                padding: 16px; background-color: white; border-radius: 12px;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-weight: 600;
-                color: #be185d; transition: all 0.2s;
+                color: #be185d; transition: all 0.2s; text-decoration: none;
             }
             .shortcut-card:hover {
                 transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.08);
                 background-color: #fff1f2;
             }
-            .shortcut-card i { margin-bottom: 12px; }
+            .shortcut-card i { margin-bottom: 8px; }
         </style>
     </div>
 
