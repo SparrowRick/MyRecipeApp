@@ -34,24 +34,39 @@
                 statusEl.textContent = '您的浏览器不支持推送通知';
                 return;
             }
+            // iOS 检测：必须在 standalone 模式（从主屏幕打开）下才能使用通知
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+            if (isIOS && !isStandalone) {
+                statusEl.textContent = 'iOS 用户请先将此网页"添加到主屏幕"，再从主屏幕图标打开后开启通知';
+                return;
+            }
             const permission = await Notification.requestPermission();
             if (permission !== 'granted') {
-                statusEl.textContent = '通知权限被拒绝';
+                statusEl.textContent = '通知权限被拒绝，请在浏览器/系统设置中手动开启通知权限';
                 return;
             }
             const res = await fetch('/push/vapid-public-key');
             const { publicKey } = await res.json();
-            const reg = await navigator.serviceWorker.ready;
-            const sub = await reg.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: publicKey
-            });
-            await fetch('/push/subscribe', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(sub)
-            });
-            statusEl.textContent = '推送通知已开启！';
+            if (!publicKey) {
+                statusEl.textContent = '服务端推送密钥未配置，请联系管理员';
+                return;
+            }
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                const sub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: publicKey
+                });
+                await fetch('/push/subscribe', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(sub)
+                });
+                statusEl.textContent = '推送通知已开启！';
+            } catch (e) {
+                statusEl.textContent = '订阅失败：' + e.message;
+            }
         });
         </script>
     
