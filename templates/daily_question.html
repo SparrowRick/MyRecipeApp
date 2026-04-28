@@ -27,6 +27,23 @@
                 </span>
             </div>
             <h2 class="text-2xl md:text-3xl font-bold text-gray-800">{{ question.content }}</h2>
+
+            <!-- 点赞按钮 -->
+            <div class="flex justify-center gap-3 mt-4">
+                <form action="{{ url_for('like_daily_question', question_id=question.id) }}" method="POST">
+                    <button type="submit" class="flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold transition-all
+                        {% if my_like %} bg-rose-500 text-white {% else %} bg-gray-100 text-gray-500 hover:bg-rose-100 {% endif %}">
+                        ❤️ 我喜欢{% if my_like %}（已赞）{% endif %}
+                    </button>
+                </form>
+                <span class="flex items-center gap-1 px-4 py-2 rounded-full text-sm
+                    {% if partner_like %} bg-rose-100 text-rose-600 {% else %} bg-gray-50 text-gray-400 {% endif %}">
+                    {% if partner_like %}❤️ TA也喜欢{% else %}💤 TA未点赞{% endif %}
+                </span>
+            </div>
+            {% if both_liked %}
+            <p class="text-xs text-rose-500 mt-2">✨ 双方都喜欢这个问题，AI 下次会参考这种风格！</p>
+            {% endif %}
         </div>
 
         <div class="grid gap-6">

@@ -1,50 +1,120 @@
 {% extends "base.html" %}
 {% block content %}
-    
+
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold">共享菜谱</h1>
         <a href="{{ url_for('add_recipe') }}" class="bg-rose-500 text-white px-4 py-2 rounded-lg shadow-md hover:bg-rose-600 transition-all flex items-center">
             <i data-lucide="plus" class="w-5 h-5 mr-1"></i> 添加新菜谱
         </a>
     </div>
-    
-    <p class="text-gray-600 mb-6">这里会显示您和您伴侣添加的所有菜谱。</p>
 
-    <!-- V4.0: 新的 Tailwind 菜谱列表 -->
-    <div class="bg-white rounded-xl shadow-lg p-6">
-        <ul class="divide-y divide-gray-200">
-            {% for recipe in recipes %}
+    <!-- 切换标签 -->
+    <div class="flex gap-2 mb-4">
+        <button onclick="switchTab('category')" id="tab-category" class="px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-rose-500 text-white">
+            <i data-lucide="tag" class="w-4 h-4 inline mr-1"></i>按种类
+        </button>
+        <button onclick="switchTab('author')" id="tab-author" class="px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-gray-100 text-gray-600 hover:bg-gray-200">
+            <i data-lucide="user" class="w-4 h-4 inline mr-1"></i>按添加人
+        </button>
+    </div>
+
+    <!-- 按种类分组 -->
+    <div id="panel-category">
+    {% if grouped %}
+        {% for category, recipes in grouped.items() | sort %}
+        <details class="bg-white rounded-xl shadow-lg mb-4" open>
+            <summary class="px-6 py-4 cursor-pointer font-bold text-gray-700 text-lg flex items-center justify-between">
+                <span>{{ category }} <span class="text-sm font-normal text-gray-400">({{ recipes | length }})</span></span>
+                <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400"></i>
+            </summary>
+            <ul class="divide-y divide-gray-200 px-6 pb-2">
+                {% for recipe in recipes %}
                 <li class="py-4 flex justify-between items-center">
                     <div>
                         <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}" class="text-lg font-semibold text-gray-800 hover:text-rose-500">
                             {{ recipe.name }}
                         </a>
-                        <p class="text-sm text-gray-500">
-                            (由 
-                            {% if recipe.author_id == current_user.id %}
+                        <p class="text-sm text-gray-500">(由
+                            {% if recipe.user_id == current_user.id %}
                                 <strong style="color: #007BFF;">我</strong>
                             {% else %}
                                 <strong style="color: #28a745;">{{ recipe.author.username }}</strong>
                             {% endif %}
-                            添加)
-                        </p>
+                        添加)</p>
                     </div>
                     <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
                 </li>
-            {% else %}
-                <li class="py-4 text-center text-gray-500">
-                    您和您的伴侣还没有添加任何菜谱。
-                </li>
-            {% endfor %}
-        </ul>
+                {% endfor %}
+            </ul>
+        </details>
+        {% endfor %}
+    {% else %}
+        <div class="bg-white rounded-xl shadow-lg p-6 text-center text-gray-500">
+            您和您的伴侣还没有添加任何菜谱。
+        </div>
+    {% endif %}
     </div>
-    
-    <!-- 确保 Lucide 图标被渲染 -->
+
+    <!-- 按添加人分组 -->
+    <div id="panel-author" style="display:none;">
+    {% if grouped_by_author %}
+        {% for author, recipes in grouped_by_author.items() %}
+        <details class="bg-white rounded-xl shadow-lg mb-4" open>
+            <summary class="px-6 py-4 cursor-pointer font-bold text-gray-700 text-lg flex items-center justify-between">
+                <span>
+                    {% if author == '我' %}
+                        <span style="color: #3b82f6;">{{ author }}</span>
+                    {% else %}
+                        {{ author }}
+                    {% endif %}
+                    <span class="text-sm font-normal text-gray-400">({{ recipes | length }})</span>
+                </span>
+                <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400"></i>
+            </summary>
+            <ul class="divide-y divide-gray-200 px-6 pb-2">
+                {% for recipe in recipes %}
+                <li class="py-4 flex justify-between items-center">
+                    <div>
+                        <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}" class="text-lg font-semibold text-gray-800 hover:text-rose-500">
+                            {{ recipe.name }}
+                        </a>
+                        <p class="text-sm text-gray-400">{{ recipe.category or '未分类' }}</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
+                </li>
+                {% endfor %}
+            </ul>
+        </details>
+        {% endfor %}
+    {% else %}
+        <div class="bg-white rounded-xl shadow-lg p-6 text-center text-gray-500">
+            您和您的伴侣还没有添加任何菜谱。
+        </div>
+    {% endif %}
+    </div>
+
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
+        function switchTab(tab) {
+            var catPanel = document.getElementById('panel-category');
+            var authPanel = document.getElementById('panel-author');
+            var catBtn = document.getElementById('tab-category');
+            var authBtn = document.getElementById('tab-author');
+
+            if (tab === 'category') {
+                catPanel.style.display = 'block';
+                authPanel.style.display = 'none';
+                catBtn.className = 'px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-rose-500 text-white';
+                authBtn.className = 'px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-gray-100 text-gray-600 hover:bg-gray-200';
+            } else {
+                catPanel.style.display = 'none';
+                authPanel.style.display = 'block';
+                authBtn.className = 'px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-rose-500 text-white';
+                catBtn.className = 'px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-gray-100 text-gray-600 hover:bg-gray-200';
             }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         });
     </script>
 {% endblock %}

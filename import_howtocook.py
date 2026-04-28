@@ -80,45 +80,45 @@ def parse_markdown(filepath):
 def import_recipes(user_id):
     search_path = os.path.join(TEMP_DIR, 'dishes', '**', '*.md')
     md_files = glob.glob(search_path, recursive=True)
-    
+
     print(f"找到 {len(md_files)} 个菜谱文件。准备导入...")
-    
+
     success_count = 0
     with app.app_context():
         for filepath in md_files:
-            # 排除 README 等文件
             if 'README' in filepath or 'example' in filepath.lower() or 'template' in filepath.lower():
                 continue
-                
+
+            category = os.path.basename(os.path.dirname(filepath))
             parsed = parse_markdown(filepath)
             name = parsed['name']
-            
-            # 检查是否已存在
+
             existing = Recipe.query.filter_by(name=name, user_id=user_id).first()
             if existing:
+                existing.category = category
+                db.session.commit()
                 continue
-                
+
             print(f"导入: {name}")
             new_recipe = Recipe(
                 name=name,
-                instructions=parsed['instructions'][:2000],  # 截断以防超出长度限制，尽管Text类型很大
+                instructions=parsed['instructions'][:2000],
                 user_id=user_id,
-                image_file='default.jpg'
+                image_file='default.jpg',
+                category=category
             )
             db.session.add(new_recipe)
-            db.session.flush() # 获取 ID
-            
-            # 添加材料
+            db.session.flush()
+
             for ing in parsed['ingredients']:
                 db.session.add(Ingredient(name=ing['name'], quantity=ing['qty'], recipe_id=new_recipe.id))
-                
+
             success_count += 1
             if success_count % 50 == 0:
                 db.session.commit()
-                
-        # 提交最后的
+
         db.session.commit()
-        
+
     print(f"成功导入 {success_count} 个新菜谱！")
 
 if __name__ == '__main__':

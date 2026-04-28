@@ -6,3 +6,5 @@ Flask-Login
 Flask-Migrate
 dashscope
 httpcore
+markdown
+pywebpush

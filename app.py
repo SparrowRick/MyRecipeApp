@@ -1,12 +1,14 @@
 import os
-import string 
-import secrets 
+import string
+import secrets
 import datetime
 import calendar
 import re
 import random
 import requests
 import json
+import markdown as md_lib
+from pywebpush import webpush, WebPushException
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify 
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate 
@@ -31,7 +33,14 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 # --- NEW: 通义千问 API Key 配置 ---
 # 请在这里填入您的阿里云 DashScope API Key
-app.config['DASHSCOPE_API_KEY'] = 'sk-3e0826f5b610402d849223ef6029c421' 
+app.config['DASHSCOPE_API_KEY'] = 'sk-3e0826f5b610402d849223ef6029c421'
+
+# --- Web Push VAPID 配置 ---
+# 生成方法: python -c "from py_vapid import Vapid; v=Vapid(); v.generate_keys(); print(v.private_pem().decode()); print(v.public_key.public_bytes(__import__('cryptography').hazmat.primitives.serialization.Encoding.X962, __import__('cryptography').hazmat.primitives.serialization.PublicFormat.UncompressedPoint).hex())"
+# 或使用: npx web-push generate-vapid-keys
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
+VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
+VAPID_CLAIMS = {"sub": "mailto:admin@example.com"}
 
 # --- NEW: 关键修复！增加 SQLite 等待时间与连接池容错 ---
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -62,7 +71,7 @@ QUESTIONS_POOL = [
 ]
 
 # --- NEW: AI 生成函数 (通义千问) ---
-def generate_question_from_ai():
+def generate_question_from_ai(liked_examples=None):
     api_key = app.config.get('DASHSCOPE_API_KEY')
     if not api_key or 'sk-' not in api_key:
         print("警告: 未配置有效的 DASHSCOPE_API_KEY")
@@ -95,25 +104,28 @@ def generate_question_from_ai():
     # 4. 构造更具体的 Prompt
     prompt_text = f"""
     请生成一个适合情侣之间互相询问的每日互动问题。
-    
+
     【强制要求】：
-    1. 核心主题必须关于：“{selected_topic}”。
-    2. 提问风格必须是：“{selected_style}”。
-    3. 避免生成那种泛泛而谈的“你最喜欢什么...”的问题，要具体、有场景感。
-    4. 问题要能引发两人的深入对话，而不是简单的“是/否”回答。
+    1. 核心主题必须关于："{selected_topic}"。
+    2. 提问风格必须是："{selected_style}"。
+    3. 避免生成那种泛泛而谈的"你最喜欢什么..."的问题，要具体、有场景感。
+    4. 问题要能引发两人的深入对话，而不是简单的"是/否"回答。
     5. 只返回问题本身，不要包含任何前缀、引号或解释。
     6. 必须是中文。
     """
+    if liked_examples:
+        examples_str = "\n".join(f"- {q}" for q in liked_examples)
+        prompt_text += f"\n以下是情侣都喜欢的问题风格示例，请参考：\n{examples_str}\n"
     
     # 为了增加随机性，提高 temperature 参数 (0.0 - 1.0, 越高越随机)
     data = { 
-        "model": "qwen-turbo", 
-        "input": { "messages": [{"role": "user", "content": prompt_text}] }, 
-        "parameters": { 
+        "model": "deepseek-v4-flash",
+        "input": { "messages": [{"role": "user", "content": prompt_text}] },
+        "parameters": {
             "result_format": "message",
             "temperature": 0.85,  # 提高随机性
-            "top_p": 0.8 
-        } 
+            "top_p": 0.8
+        }
     }
     
     try:
@@ -141,7 +153,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     recipes = db.relationship('Recipe', backref='author', lazy=True, cascade="all, delete-orphan")
     invite_code = db.Column(db.String(6), unique=True, nullable=True) 
-    bark_id = db.Column(db.String(100), nullable=True) # NEW: Bark 推送 ID
+    push_subscription = db.Column(db.Text, nullable=True)  # Web Push 订阅 JSON
     partner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) 
     partner = db.relationship('User', remote_side=[id], primaryjoin=partner_id == id, uselist=False, lazy=True)
     journal_entries = db.relationship('JournalEntry', backref='author', lazy=True)
@@ -162,10 +174,11 @@ class User(UserMixin, db.Model):
 
 class Recipe(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True) 
+    name = db.Column(db.String(100), nullable=False, unique=True)
     instructions = db.Column(db.Text, nullable=True)
     image_file = db.Column(db.String(100), nullable=False, default='default.jpg')
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) 
+    category = db.Column(db.String(50), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     ingredients = db.relationship('Ingredient', backref='recipe', lazy=True, cascade="all, delete-orphan")
     seasonings = db.relationship('Seasoning', backref='recipe', lazy=True, cascade="all, delete-orphan")
     logs = db.relationship('CookingLog', backref='recipe', lazy=True, cascade="all, delete-orphan")
@@ -227,6 +240,10 @@ class DailyAnswer(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     question_id = db.Column(db.Integer, db.ForeignKey('daily_question.id'), nullable=False)
 
+class QuestionLike(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    question_id = db.Column(db.Integer, db.ForeignKey('daily_question.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 # --- 3. 辅助函数 ---
 def allowed_file(filename):
@@ -306,13 +323,26 @@ def recipes_list():
     if current_user.partner_id: user_ids.append(current_user.partner_id)
     system_user = User.query.filter_by(username="GitHub how to cook").first()
     if system_user: user_ids.append(system_user.id)
-    all_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).order_by(Recipe.id.desc()).all() 
-    return render_template('recipes_list.html', recipes=all_recipes)
+    all_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).order_by(Recipe.category.asc(), Recipe.id.desc()).all()
+
+    # 按种类分组
+    grouped_by_category = {}
+    for r in all_recipes:
+        key = r.category or '未分类'
+        grouped_by_category.setdefault(key, []).append(r)
+
+    # 按添加人分组
+    grouped_by_author = {}
+    for r in all_recipes:
+        author_name = '我' if r.user_id == current_user.id else (r.author.username if r.author else '未知')
+        grouped_by_author.setdefault(author_name, []).append(r)
+
+    return render_template('recipes_list.html', grouped=grouped_by_category, grouped_by_author=grouped_by_author)
 @app.route('/add_recipe', methods=['GET', 'POST'])
 @login_required
 def add_recipe():
     if request.method == 'POST':
-        new_recipe = Recipe(name=request.form['recipe_name'], instructions=request.form['instructions'], user_id=current_user.id)
+        new_recipe = Recipe(name=request.form['recipe_name'], instructions=request.form['instructions'], category=request.form.get('category', '') or None, user_id=current_user.id)
         db.session.add(new_recipe)
         try: db.session.commit()
         except: db.session.rollback(); return redirect(url_for('add_recipe'))
@@ -331,11 +361,14 @@ def add_recipe():
 @app.route('/recipe/<int:recipe_id>')
 @login_required
 def recipe_detail(recipe_id):
-    user_ids = [current_user.id]; 
+    user_ids = [current_user.id]
     if current_user.partner_id: user_ids.append(current_user.partner_id)
+    system_user = User.query.filter_by(username="GitHub how to cook").first()
+    if system_user: user_ids.append(system_user.id)
     recipe = Recipe.query.filter(Recipe.id == recipe_id, Recipe.user_id.in_(user_ids)).first()
     if not recipe: return redirect(url_for('recipes_list'))
-    return render_template('recipe_detail.html', recipe=recipe)
+    instructions_html = md_lib.markdown(recipe.instructions or '')
+    return render_template('recipe_detail.html', recipe=recipe, instructions_html=instructions_html)
 @app.route('/recipe/<int:recipe_id>/delete', methods=['POST'])
 @login_required
 def delete_recipe(recipe_id):
@@ -413,12 +446,12 @@ def ai_menu():
         url = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation'
         headers = { 'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json' }
         data = { 
-            "model": "qwen-turbo", 
-            "input": { "messages": [{"role": "user", "content": prompt_text}] }, 
-            "parameters": { 
+            "model": "deepseek-v4-flash",
+            "input": { "messages": [{"role": "user", "content": prompt_text}] },
+            "parameters": {
                 "result_format": "message",
                 "temperature": 0.8
-            } 
+            }
         }
         
         try:
@@ -426,13 +459,13 @@ def ai_menu():
             if response.status_code == 200:
                 res_json = response.json()
                 if 'output' in res_json and 'choices' in res_json['output']:
-                    result = res_json['output']['choices'][0]['message']['content']
+                    raw = res_json['output']['choices'][0]['message']['content']
+                    result = md_lib.markdown(raw)
             else:
                 flash(f'AI 接口返回错误: {response.text}', 'error')
         except Exception as e:
             flash(f'请求 AI 异常: {e}', 'error')
-            
-    # 如果用户没有配置过，可以把 Markdown 渲染一下，但为了简单，我们在前端显示
+
     return render_template('ai_menu.html', result=result)
 
 # (Partner, Journal, Memory, Wishlist 路由保持不变)
@@ -456,24 +489,31 @@ def redeem_invite_code():
         target.partner_id = current_user.id; current_user.partner_id = target.id; target.invite_code = None; db.session.commit()
     return redirect(url_for('partner_page'))
 
-@app.route('/partner/update_bark', methods=['POST'])
+def send_push(user, title, body):
+    if not user.push_subscription or not VAPID_PRIVATE_KEY:
+        return
+    try:
+        sub = json.loads(user.push_subscription)
+        webpush(
+            subscription_info=sub,
+            data=json.dumps({"title": title, "body": body}),
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims=VAPID_CLAIMS
+        )
+    except WebPushException as e:
+        print(f"Web Push failed: {e}")
+
+@app.route('/push/vapid-public-key')
 @login_required
-def update_bark():
-    bark_input = request.form.get('bark_id', '').strip()
-    bark_id = bark_input
-    
-    # 支持用户直接粘贴整个 URL
-    if bark_input.startswith('http'):
-        match = re.search(r'api\.day\.app/([^/]+)', bark_input)
-        if match:
-            bark_id = match.group(1)
-        else:
-            bark_id = bark_input.split('/')[-1] # fallback
-            
-    current_user.bark_id = bark_id if bark_id else None
+def vapid_public_key():
+    return jsonify({"publicKey": VAPID_PUBLIC_KEY})
+
+@app.route('/push/subscribe', methods=['POST'])
+@login_required
+def push_subscribe():
+    current_user.push_subscription = json.dumps(request.json)
     db.session.commit()
-    flash('Bark ID 已更新！', 'success')
-    return redirect(url_for('partner_page'))
+    return jsonify({"status": "ok"})
 
 @app.route('/journal')
 @login_required
@@ -502,6 +542,9 @@ def add_journal_entry():
     # 并发和锁保护
     try:
         db.session.commit()
+        # 通知伴侣
+        if current_user.partner:
+            send_push(current_user.partner, '情侣小窝', f'{current_user.username} 写了一篇日记，快去看看吧！')
         return jsonify({'status':'success'})
     except Exception as e:
         db.session.rollback()
@@ -611,7 +654,16 @@ def daily_question():
     
     if not question:
         # --- AI 生成逻辑 ---
-        new_content = generate_question_from_ai()
+        # 查询双方都点赞的最近10个问题作为偏好示例
+        liked_examples = None
+        if current_user.partner_id:
+            my_likes = {l.question_id for l in QuestionLike.query.filter_by(user_id=current_user.id).all()}
+            partner_likes = {l.question_id for l in QuestionLike.query.filter_by(user_id=current_user.partner_id).all()}
+            both_ids = list(my_likes & partner_likes)
+            if both_ids:
+                liked_qs = DailyQuestion.query.filter(DailyQuestion.id.in_(both_ids)).order_by(DailyQuestion.id.desc()).limit(10).all()
+                liked_examples = [q.content for q in liked_qs]
+        new_content = generate_question_from_ai(liked_examples=liked_examples)
         source = "AI 生成" # 标记来源
         
         # 兜底
@@ -626,13 +678,20 @@ def daily_question():
     my_answer = DailyAnswer.query.filter_by(question_id=question.id, user_id=current_user.id).first()
     partner_answer = DailyAnswer.query.filter_by(question_id=question.id, user_id=current_user.partner_id).first()
     is_unlocked = (my_answer is not None) and (partner_answer is not None)
-    
-    return render_template('daily_question.html', 
-                           question=question, 
-                           my_answer=my_answer, 
+
+    my_like = QuestionLike.query.filter_by(question_id=question.id, user_id=current_user.id).first()
+    partner_like = QuestionLike.query.filter_by(question_id=question.id, user_id=current_user.partner_id).first()
+    both_liked = bool(my_like and partner_like)
+
+    return render_template('daily_question.html',
+                           question=question,
+                           my_answer=my_answer,
                            partner_answer=partner_answer,
                            is_unlocked=is_unlocked,
-                           partner_name=current_user.partner.username)
+                           partner_name=current_user.partner.username,
+                           my_like=my_like,
+                           partner_like=partner_like,
+                           both_liked=both_liked)
 
 # --- V5.2 NEW: 历史回顾路由 ---
 @app.route('/daily_question/history')
@@ -680,16 +739,22 @@ def answer_daily_question(question_id):
         flash('回答已提交！', 'success')
         
     db.session.commit()
-    
-    # 触发 Bark 推送给伴侣
-    if current_user.partner and current_user.partner.bark_id:
-        try:
-            msg = f"{current_user.username} 刚刚回答了今日问答，快去看看TA说了什么吧！"
-            url = f"https://api.day.app/{current_user.partner.bark_id}/情侣小窝/{msg}"
-            requests.get(url, timeout=5)
-        except Exception as e:
-            print(f"Bark push failed: {e}")
 
+    # 通知伴侣
+    if current_user.partner:
+        send_push(current_user.partner, '情侣小窝', f'{current_user.username} 刚刚回答了今日问答，快去看看TA说了什么吧！')
+
+    return redirect(url_for('daily_question'))
+
+@app.route('/daily_question/<int:question_id>/like', methods=['POST'])
+@login_required
+def like_daily_question(question_id):
+    existing = QuestionLike.query.filter_by(question_id=question_id, user_id=current_user.id).first()
+    if existing:
+        db.session.delete(existing)
+    else:
+        db.session.add(QuestionLike(question_id=question_id, user_id=current_user.id))
+    db.session.commit()
     return redirect(url_for('daily_question'))
 
 if __name__ == '__main__':

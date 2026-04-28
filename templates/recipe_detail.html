@@ -27,7 +27,7 @@
     </ul>
 
     <h4>制作步骤:</h4>
-    <pre>{{ recipe.instructions | default('未添加步骤') }}</pre>
+    <div class="prose max-w-none">{{ instructions_html | safe }}</div>
 
     <hr>
 

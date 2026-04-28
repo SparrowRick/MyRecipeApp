@@ -47,7 +47,7 @@
         </h3>
         
         <!-- 使用简单的 pre-wrap 或者将 markdown 转换为 HTML -->
-        <div class="prose prose-rose max-w-none text-gray-700 bg-white/70 p-6 rounded-lg backdrop-blur-sm whitespace-pre-wrap font-sans text-base leading-relaxed border border-white/50 shadow-sm" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">{{ result }}</div>
+        <div class="prose prose-rose max-w-none text-gray-700 bg-white/70 p-6 rounded-lg backdrop-blur-sm font-sans text-base leading-relaxed border border-white/50 shadow-sm" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">{{ result | safe }}</div>
         
         <div class="mt-6 flex justify-end">
             <button onclick="window.print()" class="text-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-md flex items-center shadow-sm transition-colors">

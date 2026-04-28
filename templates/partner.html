@@ -15,23 +15,45 @@
             <h3>您已绑定成功！</h3>
             <p>您当前的伴侣是: <strong>{{ current_user.partner.username }}</strong></p>
         </div>
-        
+
         <br>
-        
+
         <div class="invite-box">
-            <h3>📱 Bark 消息推送设置</h3>
-            <p>当 TA 回答每日问答等互动时，您可以收到手机通知。</p>
-            <form action="{{ url_for('update_bark') }}" method="POST" style="margin-top: 15px;">
-                <div class="form-group" style="text-align: left;">
-                    <label for="bark_id">您的 Bark ID (例如: xxxxx...):</label>
-                    <input type="text" id="bark_id" name="bark_id" value="{{ current_user.bark_id or '' }}" placeholder="留空则关闭推送">
-                </div>
-                <button type="submit" class="btn">保存设置</button>
-            </form>
-            <p style="font-size: 0.8em; color: #888; margin-top: 10px;">
-                在 iOS App Store 搜索 "Bark"，打开 App 即可提取您的专属 ID。填写后，当伴侣回答问题时您会收到推送。
+            <h3>📱 消息推送设置</h3>
+            <p>开启后，当 TA 写日记或回答问题时，您会收到浏览器通知。</p>
+            <button id="push-btn" class="btn" style="margin-top:15px;">开启通知</button>
+            <p id="push-status" style="font-size:0.85em;color:#888;margin-top:8px;">
+                {% if current_user.push_subscription %}已开启推送通知{% else %}尚未开启{% endif %}
             </p>
         </div>
+
+        <script>
+        document.getElementById('push-btn').addEventListener('click', async () => {
+            const statusEl = document.getElementById('push-status');
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                statusEl.textContent = '您的浏览器不支持推送通知';
+                return;
+            }
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                statusEl.textContent = '通知权限被拒绝';
+                return;
+            }
+            const res = await fetch('/push/vapid-public-key');
+            const { publicKey } = await res.json();
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: publicKey
+            });
+            await fetch('/push/subscribe', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(sub)
+            });
+            statusEl.textContent = '推送通知已开启！';
+        });
+        </script>
     
     <!-- 
       情况二: 您还没有绑定伴侣
