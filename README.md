@@ -1,121 +1,82 @@
-# 情侣空间 (Lover's Space)
+# 我们的小窝
 
-情侣专属私密 Web 应用，支持共享菜谱、日记、纪念册、愿望清单、每日问答等功能。
+仅供两个人使用的 Flask 情侣空间，包含共享日记、每日问答、回忆、愿望、菜谱、重要日子、每日状态、本周小结与 Web Push 通知。
 
-## 功能一览
+## 本次版本重点
 
-| 模块 | 说明 |
-|------|------|
-| 共享菜谱 | 添加/浏览菜谱，支持按种类和按添加人分组；可导入 [HowToCook](https://github.com/Anduin2017/HowToCook) 外部菜谱 |
-| AI 智能菜单 | 根据人数和口味偏好，AI 结合本地菜谱生成推荐菜单 |
-| 共享日记 | 日历视图，双方各自写日记，互相可见 |
-| 每日问答 | AI 每日生成互动问题，双方回答后解锁对方答案；支持点赞偏好学习 |
-| 纪念册 | 图文回忆记录，支持上传图片 |
-| 愿望清单 | 双方共同维护，可标记完成 |
-| 冰箱贴 | 纪念日/倒数日，显示在首页 |
-| 伴侣绑定 | 邀请码机制，绑定后共享所有数据 |
-| Web 推送通知 | 写日记/回答问题后自动推送通知伴侣 |
-| PWA 支持 | 可安装到手机桌面，支持离线缓存 |
+- 日记采用原子保存、本地草稿和通知队列，修复 iOS Safari 偶发丢失问题。
+- 每日问题不再每天强制刷新：双方完成回答或明确跳过后才关闭。
+- AI 只参考最近 10 道问题的紧凑反馈，并在本地过滤重复、空泛和复杂问题。
+- 手机端使用底部导航，支持 iPhone 安全区和软键盘。
+- 关闭公开注册；私密页面不再进入 Service Worker 缓存。
 
-## 技术栈
+## 安装
 
-- **后端**: Flask (Python)
-- **数据库**: SQLite (Flask-SQLAlchemy + Flask-Migrate)
-- **认证**: Flask-Login (session-based)
-- **AI**: DashScope API (deepseek-v4-flash)
-- **前端**: Jinja2 + TailwindCSS (CDN) + Lucide Icons
-- **推送**: pywebpush (Web Push API + VAPID)
-- **PWA**: Service Worker + manifest.json
-
-## 快速开始
-
-### 1. 安装依赖
-
-```bash
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# macOS/Linux
-source venv/bin/activate
-
-pip install -r requirements.txt
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-### 2. 初始化数据库
+将 `.env` 中的占位值替换为真实配置，并由部署工具加载环境变量。项目不会自动读取 `.env`，生产环境可使用 Supervisor、systemd、Docker 或托管平台配置环境变量。
 
-```bash
-set FLASK_APP=app.py   # Windows
-export FLASK_APP=app.py # macOS/Linux
+关键配置：
 
-flask db upgrade
+- `APP_ENV=production`
+- `SECRET_KEY`：新的随机长字符串；轮换后现有登录会话失效。
+- `DASHSCOPE_API_KEY`：新的 DashScope Key。
+- `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY`：新的推送密钥；轮换后需要在设置页重新开启通知。
+- `ALLOW_REGISTRATION=false`：默认关闭公开注册。
+- `RELATIONSHIP_START_DATE=YYYY-MM-DD`
+- `SESSION_COOKIE_SECURE=true`：公网 HTTPS 部署必须开启。
+- `DATABASE_URL`：默认使用项目目录下的 `recipes.db`。
+
+> 旧代码曾包含真实密钥。部署前必须在对应平台撤销旧 DashScope 和 VAPID 密钥，而不只是从 Git 历史中删除字符串。
+
+## 升级与启动
+
+升级前先备份：
+
+```powershell
+.\.venv\Scripts\python.exe backup_data.py
 ```
 
-### 3. 导入外部菜谱（可选）
+然后执行：
 
-```bash
-python import_howtocook.py
+```powershell
+$env:FLASK_APP = "app.py"
+.\.venv\Scripts\python.exe -m flask db upgrade
+.\.venv\Scripts\python.exe -m flask run
 ```
 
-### 4. 启动应用
+迁移会保留历史问题和回答，但会关闭旧版问题；升级后首次进入问答页时按新规则生成问题。
 
-```bash
-flask run
+## 推送通知队列
+
+保存日记和回答不会等待推送服务返回。应用会立即尝试后台发送，失败记录保留在 `notification_outbox`。部署环境可定时执行：
+
+```powershell
+$env:FLASK_APP = "app.py"
+.\.venv\Scripts\python.exe -m flask process-notifications
 ```
 
-访问 `http://localhost:5000`，注册账号即可使用。
+## 备份
 
-## 配置说明
+`backup_data.py` 使用 SQLite 在线备份 API 创建一致的数据库副本，并压缩 `static/uploads`。默认保留最近 14 组备份：
 
-在 `app.py` 中修改以下配置项：
-
-| 配置项 | 说明 |
-|--------|------|
-| `SECRET_KEY` | 会话加密密钥，生产环境务必修改 |
-| `DASHSCOPE_API_KEY` | 阿里云 DashScope API Key（AI 功能必需） |
-| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` | Web Push VAPID 密钥对（通过环境变量设置） |
-
-生成 VAPID 密钥：
-
-```bash
-npx web-push generate-vapid-keys
+```powershell
+.\.venv\Scripts\python.exe backup_data.py --keep 14
 ```
 
-将生成的公钥和私钥分别设置为环境变量 `VAPID_PUBLIC_KEY` 和 `VAPID_PRIVATE_KEY`。
+## 测试
 
-## 部署
+测试不会调用 AI 接口，也不会批量生成问题：
 
-```bash
-# 拉取最新代码后
-flask db upgrade
-# 重启 Web 服务器
+```powershell
+$env:APP_ENV = "development"
+$env:DATABASE_URL = "sqlite:///:memory:"
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-建议使用 Gunicorn + Nginx 部署，Supervisor 管理进程。
-
-## 项目结构
-
-```
-MyRecipeApp/
-├── app.py                  # 主应用（路由、模型、配置）
-├── import_howtocook.py     # HowToCook 菜谱导入脚本
-├── requirements.txt        # Python 依赖
-├── recipes.db              # SQLite 数据库
-├── static/
-│   ├── manifest.json       # PWA 清单
-│   ├── sw.js               # Service Worker
-│   ├── icon.png            # 应用图标
-│   └── uploads/            # 用户上传的图片
-├── templates/              # Jinja2 模板
-│   ├── base.html
-│   ├── index.html
-│   ├── recipes_list.html
-│   ├── recipe_detail.html
-│   ├── add_recipe.html
-│   ├── ai_menu.html
-│   ├── journal.html
-│   ├── daily_question.html
-│   ├── memories.html
-│   ├── wishlist.html
-│   └── partner.html
-└── migrations/             # 数据库迁移文件
-```
+真实 iPhone 上重点检查：断网、切后台、锁屏恢复、重复保存、PWA 模式和重新开启推送。

@@ -7,15 +7,25 @@ import re
 import random
 import requests
 import json
+import logging
+import difflib
+import threading
+import uuid
+import time
 import markdown as md_lib
+import bleach
 from pywebpush import webpush, WebPushException
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify 
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate 
+from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename 
 from sqlalchemy import or_ 
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 # NEW: 导入通义千问 SDK
 import dashscope
@@ -25,23 +35,42 @@ from http import HTTPStatus
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'recipes.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL', 'sqlite:///' + os.path.join(basedir, 'recipes.db')
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'a_very_secret_key_change_this_for_production'
+app_env = os.environ.get('APP_ENV', 'development').lower()
+secret_key = os.environ.get('SECRET_KEY')
+if not secret_key:
+    if app_env == 'production':
+        raise RuntimeError('生产环境必须设置 SECRET_KEY')
+    secret_key = 'development-only-change-before-production'
+    logging.warning('正在使用仅限开发环境的 SECRET_KEY')
+app.config['SECRET_KEY'] = secret_key
 app.config['UPLOAD_FOLDER'] = os.path.join(basedir, 'static/uploads')
+app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024
+app.config['ALLOW_REGISTRATION'] = os.environ.get('ALLOW_REGISTRATION', 'false').lower() == 'true'
+app.config['RELATIONSHIP_START_DATE'] = os.environ.get('RELATIONSHIP_START_DATE', '2024-05-01')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
+app.config['REMEMBER_COOKIE_SECURE'] = app.config['SESSION_COOKIE_SECURE']
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+SYSTEM_RECIPE_USERNAME = 'GitHub how to cook'
 
 # --- NEW: 通义千问 API Key 配置 ---
 # 请在这里填入您的阿里云 DashScope API Key
-app.config['DASHSCOPE_API_KEY'] = 'sk-3e0826f5b610402d849223ef6029c421'
+app.config['DASHSCOPE_API_KEY'] = os.environ.get('DASHSCOPE_API_KEY', '')
 
 # --- Web Push VAPID 配置 ---
 # 注意: py_vapid 的 Vapid.from_string() 会把输入当 base64 解码，
 # 不能包含 PEM 头尾标记（-----BEGIN/END...-----），否则解码失败导致推送静默失败。
 # 所以这里直接用纯 base64（DER 编码）格式。
-VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', 'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgJkA6A9KXNKMNfbHXt7kD6S9YKbz8hbIRp7jK43zVY7ShRANCAAQJEWEwQEsmpuelBAqIDPJuZH+XjOiqe41/C8aSDm+TIe501zHQJxEdArAnNlee+KHgXC9rYvcJm/j/EWwoPW8g')
-VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', 'BAkRYTBASyam56UECogM8m5kf5eM6Kp7jX8LxpIOb5Mh7nTXMdAnER0CsCc2V574oeBcL2ti9wmb-P8RbCg9byA')
-VAPID_CLAIMS = {"sub": "mailto:admin@example.com"}
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
+VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
+VAPID_CLAIMS = {"sub": os.environ.get('VAPID_SUBJECT', 'mailto:admin@example.com')}
 
 # --- NEW: 关键修复！增加 SQLite 等待时间与连接池容错 ---
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -52,6 +81,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db) 
+csrf = CSRFProtect(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login' 
 login_manager.login_message = '您需要先登录才能访问此页面。'
@@ -59,92 +89,138 @@ login_manager.login_message_category = 'error'
 
 # 本地题库 (AI 失败时的兜底)
 QUESTIONS_POOL = [
-    "如果我们可以去世界上任何地方旅行，你想去哪里？",
-    "你最喜欢我身上的哪一点？",
-    "我们在一起最美好的回忆是什么？",
-    "如果中了一千万，你第一件事想做什么？",
-    "你觉得完美的约会是什么样的？",
-    "最近有什么事情让你感到压力很大吗？",
-    "你小时候的梦想是什么？",
-    "如果可以拥有一种超能力，你想要什么？",
-    "我们老了以后，你希望过什么样的生活？",
-    "此时此刻，你最想吃什么？"
+    "最近一周，我做过哪件小事让你觉得被照顾到了？",
+    "这个周末只安排一件放松的事，你最想和我做什么？",
+    "最近有没有一件你希望我主动帮忙的小事？",
+    "我们最近哪顿饭让你最想再吃一次？",
+    "最近哪个普通瞬间让你觉得两个人一起生活真好？",
+    "这周有什么事你想让我多听一会儿，先不急着给建议？",
+    "最近我们的相处节奏里，有什么值得继续保持？",
+    "下次只有半天空闲，你想和我怎么度过？",
+    "最近你最想被怎样安慰或支持？",
+    "这周你观察到我有什么小变化？",
+    "最近有什么小期待，说出来会更容易实现？",
+    "如果给这周留下一个画面，你会选哪个瞬间？",
+    "最近家里哪件小事调整一下，会让我们都更舒服？",
+    "最近有什么好吃的，值得我们一起去尝试？",
+    "今天你最希望我理解你的哪一种感受？",
 ]
 
-# --- NEW: AI 生成函数 (通义千问) ---
-def generate_question_from_ai(liked_examples=None):
-    api_key = app.config.get('DASHSCOPE_API_KEY')
-    if not api_key or 'sk-' not in api_key:
-        print("警告: 未配置有效的 DASHSCOPE_API_KEY")
+QUESTION_FEEDBACK_REASONS = {
+    'too_abstract': '太空泛', 'too_complex': '太绕了', 'repetitive': '重复了',
+    'not_for_us': '不适合我们', 'too_sensitive': '太敏感', 'not_today': '今天不想聊这个'
+}
+
+LOGIN_FAILURES = {}
+LOGIN_FAILURE_LOCK = threading.Lock()
+
+
+def utcnow():
+    """Return naive UTC for SQLite while avoiding datetime.utcnow deprecation."""
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
+def _extract_json(text):
+    """Extract a JSON object even when a model wraps it in a markdown fence."""
+    text = (text or '').strip()
+    text = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.I)
+    start, end = text.find('{'), text.rfind('}')
+    if start == -1 or end == -1:
         return None
-
-    # 1. 定义多样化的主题库 (强制 AI 聚焦特定领域)
-    topics = [
-        "童年回忆与成长经历", "具体的未来规划", "价值观与人生哲学", "旅行中的突发状况", 
-        "对彼此的初印象与变化", "生活习惯与怪癖", "假如世界末日/假如中奖 (脑洞假设)", 
-        "性与亲密关系", "工作挑战与职业理想", "家庭关系与父母", 
-        "最尴尬或最糗的时刻", "最自豪的成就", "内心深处的恐惧", 
-        "精神世界与梦想", "日常琐事与家务分工", "对于衰老与死亡的看法"
-    ]
-    
-    # 2. 定义不同的提问风格 (调整语气)
-    styles = [
-        "幽默风趣的", "深情浪漫的", "严肃深刻的", "轻松随意的", 
-        "充满好奇心的", "怀旧感伤的", "脑洞大开的", "犀利直接的"
-    ]
-    
-    # 3. 随机抽取
-    selected_topic = random.choice(topics)
-    selected_style = random.choice(styles)
-    
-    print(f"DEBUG: 今天 AI 的生成方向 -> 主题: {selected_topic}, 风格: {selected_style}")
-
-    url = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation'
-    headers = { 'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json' }
-    
-    # 4. 构造更具体的 Prompt
-    prompt_text = f"""
-    请生成一个适合情侣之间互相询问的每日互动问题。
-
-    【强制要求】：
-    1. 核心主题必须关于："{selected_topic}"。
-    2. 提问风格必须是："{selected_style}"。
-    3. 避免生成那种泛泛而谈的"你最喜欢什么..."的问题，要具体、有场景感。
-    4. 问题要能引发两人的深入对话，而不是简单的"是/否"回答。
-    5. 只返回问题本身，不要包含任何前缀、引号或解释。
-    6. 必须是中文。
-    """
-    if liked_examples:
-        examples_str = "\n".join(f"- {q}" for q in liked_examples)
-        prompt_text += f"\n以下是情侣都喜欢的问题风格示例，请参考：\n{examples_str}\n"
-    
-    # 为了增加随机性，提高 temperature 参数 (0.0 - 1.0, 越高越随机)
-    data = { 
-        "model": "deepseek-v4-flash",
-        "input": { "messages": [{"role": "user", "content": prompt_text}] },
-        "parameters": {
-            "result_format": "message",
-            "temperature": 0.85,  # 提高随机性
-            "top_p": 0.8
-        }
-    }
-    
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(data), timeout=10)
-        if response.status_code == 200:
-            result = response.json()
-            if 'output' in result and 'choices' in result['output']:
-                content = result['output']['choices'][0]['message']['content']
-                return content.strip().replace('"', '').replace('“', '').replace('”', '')
+        return json.loads(text[start:end + 1])
+    except (TypeError, ValueError):
         return None
-    except Exception as e:
-        print(f"AI 生成异常: {e}")
-        return None
+
+
+def _question_is_acceptable(question, recent_questions):
+    question = re.sub(r'\s+', '', (question or '').strip())
+    if not 15 <= len(question) <= 45 or not question.endswith(('？', '?')):
+        return False
+    banned = ('回到过去', '中了彩票', '中了一千万', '世界末日', '拥有超能力', '童年的影子', '评价现在的你')
+    if any(term in question for term in banned):
+        return False
+    if question.count('？') + question.count('?') > 1 or question.count('，') > 3:
+        return False
+    for old in recent_questions:
+        ratio = difflib.SequenceMatcher(None, question, re.sub(r'\s+', '', old)).ratio()
+        if ratio >= 0.64:
+            return False
+    return True
+
+
+def _compact_question_history(limit=10):
+    questions = DailyQuestion.query.order_by(DailyQuestion.id.desc()).limit(limit).all()
+    compact = []
+    for question in questions:
+        answer_count = DailyAnswer.query.filter_by(question_id=question.id).count()
+        like_count = QuestionLike.query.filter_by(question_id=question.id).count()
+        feedback = QuestionFeedback.query.filter_by(question_id=question.id).all()
+        codes = [item.reason or item.feedback_type for item in feedback]
+        if answer_count >= 2:
+            codes.append('both_answered')
+        if like_count:
+            codes.append('liked')
+        compact.append({'q': question.content, 'f': sorted(set(codes))})
+    return compact
+
+
+def generate_question_from_ai():
+    """Generate a few compact candidates in one request and filter locally."""
+    history = _compact_question_history(10)
+    recent_questions = [item['q'] for item in history]
+    profile = CoupleAIProfile.query.first()
+    profile_summary = profile.summary[:1200] if profile and profile.summary else '暂无档案，从真实、具体的近期生活小事切入。'
+    api_key = app.config.get('DASHSCOPE_API_KEY')
+    if not api_key:
+        return None, {'reason': 'api_key_missing'}
+
+    prompt_text = f"""你在为一对长期相处的情侣挑选一道值得回答的问题。
+风格：真实具体、自然、轻深结合，15到45个汉字，一次只问一件事。
+避免作文题、强行煽情、复杂脑洞、陈旧假设和未经证实的共同经历。
+情侣档案摘要：{profile_summary}
+最近10题及反馈（紧凑JSON）：{json.dumps(history, ensure_ascii=False, separators=(',', ':'))}
+生成4个候选。只返回JSON：
+{{"candidates":[{{"question":"...？","natural":1到10,"desire":1到10}}]}}
+"""
+    data = {
+        'model': 'deepseek-v4-flash',
+        'input': {'messages': [{'role': 'user', 'content': prompt_text}]},
+        'parameters': {'result_format': 'message', 'temperature': 0.7, 'top_p': 0.8}
+    }
+    try:
+        response = requests.post(
+            'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            json=data, timeout=15
+        )
+        response.raise_for_status()
+        raw = response.json()['output']['choices'][0]['message']['content']
+        parsed = _extract_json(raw) or {}
+        candidates = parsed.get('candidates', [])[:4]
+        valid = []
+        for item in candidates:
+            question = str(item.get('question', '')).strip().replace('"', '')
+            if _question_is_acceptable(question, recent_questions):
+                score = float(item.get('natural', 0)) + float(item.get('desire', 0))
+                valid.append((score, question))
+        if valid:
+            valid.sort(reverse=True)
+            return valid[0][1], {'candidate_count': len(candidates), 'valid_count': len(valid)}
+        return None, {'reason': 'all_candidates_filtered', 'candidate_count': len(candidates)}
+    except Exception as exc:
+        app.logger.warning('AI question generation failed: %s', exc)
+        return None, {'reason': type(exc).__name__}
+
+
+def choose_fallback_question():
+    recent = [q.content for q in DailyQuestion.query.order_by(DailyQuestion.id.desc()).limit(10).all()]
+    choices = [q for q in QUESTIONS_POOL if _question_is_acceptable(q, recent)]
+    return random.choice(choices or QUESTIONS_POOL)
 
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 # --- 2. 数据库模型 ---
 
@@ -155,6 +231,7 @@ class User(UserMixin, db.Model):
     recipes = db.relationship('Recipe', backref='author', lazy=True, cascade="all, delete-orphan")
     invite_code = db.Column(db.String(6), unique=True, nullable=True) 
     push_subscription = db.Column(db.Text, nullable=True)  # Web Push 订阅 JSON
+    ai_context_consent = db.Column(db.Boolean, nullable=False, default=False)
     partner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) 
     partner = db.relationship('User', remote_side=[id], primaryjoin=partner_id == id, uselist=False, lazy=True)
     journal_entries = db.relationship('JournalEntry', backref='author', lazy=True)
@@ -179,6 +256,7 @@ class Recipe(db.Model):
     instructions = db.Column(db.Text, nullable=True)
     image_file = db.Column(db.String(100), nullable=False, default='default.jpg')
     category = db.Column(db.String(50), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     ingredients = db.relationship('Ingredient', backref='recipe', lazy=True, cascade="all, delete-orphan")
     seasonings = db.relationship('Seasoning', backref='recipe', lazy=True, cascade="all, delete-orphan")
@@ -195,7 +273,7 @@ class Seasoning(db.Model):
     recipe_id = db.Column(db.Integer, db.ForeignKey('recipe.id'), nullable=False)
 class CookingLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    date_cooked = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
+    date_cooked = db.Column(db.DateTime, nullable=False, default=utcnow)
     time_taken = db.Column(db.String(50), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     recipe_id = db.Column(db.Integer, db.ForeignKey('recipe.id'), nullable=False)
@@ -204,6 +282,9 @@ class JournalEntry(db.Model):
     date_str = db.Column(db.String(10), nullable=False) 
     content = db.Column(db.Text, nullable=False)
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    last_request_id = db.Column(db.String(64), nullable=True)
     __table_args__ = (db.UniqueConstraint('date_str', 'author_id', name='_date_author_uc'),)
 class Memory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -213,11 +294,13 @@ class Memory(db.Model):
     content = db.Column(db.Text, nullable=False)
     image_file = db.Column(db.String(100), nullable=False, default='default.jpg') 
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 class WishlistItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.String(300), nullable=False)
     is_completed = db.Column(db.Boolean, default=False, nullable=False)
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
 # --- V5.4 NEW: 冰箱贴模型 (纪念日/倒数日) ---
 class FridgeItem(db.Model):
@@ -226,29 +309,226 @@ class FridgeItem(db.Model):
     target_date = db.Column(db.Date, nullable=False) # 目标日期
     item_type = db.Column(db.String(20), nullable=False) # 'anniversary' 或 'countdown'
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
 # --- V5.0 NEW: 每日一问模型 ---
 class DailyQuestion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.String(200), nullable=False)
-    date_str = db.Column(db.String(10), unique=True, nullable=False) 
+    date_str = db.Column(db.String(10), nullable=False)
     source = db.Column(db.String(20), default='随机题库')
+    status = db.Column(db.String(20), nullable=False, default='open')
+    close_reason = db.Column(db.String(40), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    generation_meta = db.Column(db.Text, nullable=True)
     answers = db.relationship('DailyAnswer', backref='question', lazy=True, cascade="all, delete-orphan")
+    __table_args__ = (
+        db.Index('uq_daily_question_single_open', 'status', unique=True, sqlite_where=db.text("status = 'open'")),
+    )
 
 class DailyAnswer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.Text, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     question_id = db.Column(db.Integer, db.ForeignKey('daily_question.id'), nullable=False)
+    __table_args__ = (db.UniqueConstraint('question_id', 'user_id', name='uq_daily_answer_question_user'),)
 
 class QuestionLike(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     question_id = db.Column(db.Integer, db.ForeignKey('daily_question.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    __table_args__ = (db.UniqueConstraint('question_id', 'user_id', name='uq_question_like_question_user'),)
+
+
+class QuestionFeedback(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    question_id = db.Column(db.Integer, db.ForeignKey('daily_question.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    feedback_type = db.Column(db.String(20), nullable=False)
+    reason = db.Column(db.String(40), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    __table_args__ = (db.UniqueConstraint('question_id', 'user_id', name='uq_question_feedback_question_user'),)
+
+
+class CoupleAIProfile(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    summary = db.Column(db.Text, nullable=False, default='')
+    updated_at = db.Column(db.DateTime, nullable=True)
+
+
+class NotificationOutbox(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    title = db.Column(db.String(100), nullable=False)
+    body = db.Column(db.String(500), nullable=False)
+    target_url = db.Column(db.String(300), nullable=False, default='/')
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    last_error = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    sent_at = db.Column(db.DateTime, nullable=True)
+
+
+class DailyCheckIn(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date_str = db.Column(db.String(10), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    mood = db.Column(db.String(20), nullable=False)
+    energy = db.Column(db.String(20), nullable=False)
+    need = db.Column(db.String(30), nullable=False)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    __table_args__ = (db.UniqueConstraint('date_str', 'user_id', name='uq_check_in_date_user'),)
+
+
+class WeeklyReflection(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    week_start = db.Column(db.String(10), nullable=False, unique=True)
+    summary = db.Column(db.Text, nullable=False, default='')
+    gratitude_user_1 = db.Column(db.Text, nullable=True)
+    gratitude_user_2 = db.Column(db.Text, nullable=True)
+    confirmed_user_1 = db.Column(db.Boolean, nullable=False, default=False)
+    confirmed_user_2 = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+
+class CoupleTask(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    week_start = db.Column(db.String(10), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='open')
+    completed_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
 # --- 3. 辅助函数 ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def shared_user_ids():
+    ids = [current_user.id]
+    if current_user.partner_id:
+        ids.append(current_user.partner_id)
+    return ids
+
+
+def can_access_author(author_id):
+    return author_id in shared_user_ids()
+
+
+def render_safe_markdown(value):
+    rendered = md_lib.markdown(value or '', extensions=['sane_lists'])
+    return bleach.clean(
+        rendered,
+        tags={'p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'code', 'pre', 'a'},
+        attributes={'a': ['href', 'title']},
+        protocols={'http', 'https'}, strip=True
+    )
+
+
+def save_uploaded_image(file_storage, prefix):
+    if not file_storage or not file_storage.filename or not allowed_file(file_storage.filename):
+        return None
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    filename = f'{prefix}_{secrets.token_hex(12)}.jpg'
+    destination = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    try:
+        image = Image.open(file_storage.stream)
+        image.verify()
+        file_storage.stream.seek(0)
+        image = Image.open(file_storage.stream)
+        image = ImageOps.exif_transpose(image).convert('RGB')
+        image.thumbnail((1800, 1800))
+        image.save(destination, 'JPEG', quality=86, optimize=True)
+        return filename
+    except (UnidentifiedImageError, OSError, ValueError):
+        if os.path.exists(destination):
+            os.remove(destination)
+        return None
+
+
+def enqueue_push(user, title, body, target_url='/'):
+    if user and user.push_subscription:
+        item = NotificationOutbox(
+            user_id=user.id, title=title, body=body, target_url=target_url
+        )
+        db.session.add(item)
+        return item
+    return None
+
+
+def process_notification(notification_id):
+    with app.app_context():
+        item = db.session.get(NotificationOutbox, notification_id)
+        if not item or item.status == 'sent':
+            return
+        user = db.session.get(User, item.user_id)
+        if not user or not user.push_subscription or not VAPID_PRIVATE_KEY:
+            item.status = 'failed'
+            item.last_error = 'missing subscription or VAPID key'
+            db.session.commit()
+            return
+        try:
+            webpush(
+                subscription_info=json.loads(user.push_subscription),
+                data=json.dumps({'title': item.title, 'body': item.body, 'url': item.target_url}),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=VAPID_CLAIMS,
+                timeout=8
+            )
+            item.status = 'sent'
+            item.sent_at = utcnow()
+            item.last_error = None
+        except WebPushException as exc:
+            item.attempts += 1
+            item.status = 'failed' if item.attempts >= 3 else 'pending'
+            item.last_error = str(exc)[:1000]
+            if getattr(exc, 'response', None) is not None and exc.response.status_code in (404, 410):
+                user.push_subscription = None
+                item.status = 'failed'
+        except Exception as exc:
+            item.attempts += 1
+            item.status = 'failed' if item.attempts >= 3 else 'pending'
+            item.last_error = f'{type(exc).__name__}: {exc}'[:1000]
+        db.session.commit()
+
+
+def dispatch_notification(notification_id):
+    threading.Thread(target=process_notification, args=(notification_id,), daemon=True).start()
+
+
+@app.cli.command('process-notifications')
+def process_notifications_command():
+    pending = NotificationOutbox.query.filter_by(status='pending').order_by(NotificationOutbox.id).limit(50).all()
+    for item in pending:
+        process_notification(item.id)
+    print(f'processed {len(pending)} notification(s)')
+
+
+@app.route('/sw.js')
+def service_worker():
+    response = send_from_directory(app.static_folder, 'sw.js')
+    response.headers['Service-Worker-Allowed'] = '/'
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    response.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'"
+    )
+    if app_env == 'production' and app.config['SESSION_COOKIE_SECURE']:
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    if current_user.is_authenticated and request.endpoint != 'static':
+        response.headers.setdefault('Cache-Control', 'private, no-store')
+    return response
 
 # --- 4. 路由 ---
 
@@ -257,16 +537,31 @@ def allowed_file(filename):
 def login():
     if current_user.is_authenticated: return redirect(url_for('index'))
     if request.method == 'POST':
-        user = User.query.filter_by(username=request.form['username']).first()
-        if user is None or not user.check_password(request.form['password']):
+        client_key = request.remote_addr or 'unknown'
+        now = time.time()
+        with LOGIN_FAILURE_LOCK:
+            recent = [stamp for stamp in LOGIN_FAILURES.get(client_key, []) if now - stamp < 600]
+            LOGIN_FAILURES[client_key] = recent
+        if len(recent) >= 5:
+            flash('登录尝试过多，请十分钟后再试。', 'error')
+            return redirect(url_for('login'))
+        user = User.query.filter_by(username=request.form.get('username', '').strip()).first()
+        if user is None or user.username == SYSTEM_RECIPE_USERNAME or not user.check_password(request.form['password']):
+            with LOGIN_FAILURE_LOCK:
+                LOGIN_FAILURES.setdefault(client_key, []).append(now)
             flash('无效的用户名或密码', 'error'); return redirect(url_for('login'))
+        with LOGIN_FAILURE_LOCK:
+            LOGIN_FAILURES.pop(client_key, None)
         login_user(user, remember=True); return redirect(url_for('index'))
     return render_template('login.html')
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
+@login_required
 def logout():
     logout_user(); return redirect(url_for('login'))
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    if not app.config['ALLOW_REGISTRATION']:
+        abort(404)
     if current_user.is_authenticated: return redirect(url_for('index'))
     if request.method == 'POST':
         if User.query.filter_by(username=request.form['username']).first():
@@ -280,19 +575,18 @@ def register():
 @app.route('/')
 @login_required
 def index():
-    user_ids = [current_user.id]
-    if current_user.partner_id: user_ids.append(current_user.partner_id)
+    user_ids = shared_user_ids()
     activities = []
     recent_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).order_by(Recipe.id.desc()).limit(3).all()
-    for r in recent_recipes: activities.append({'type': 'recipe', 'time': r.id, 'text': f"{r.author.username} 添加了新菜谱: {r.name}"})
+    for r in recent_recipes: activities.append({'type': 'recipe', 'time': r.created_at, 'text': f"{r.author.username} 添加了新菜谱：{r.name}"})
     recent_memories = Memory.query.filter(Memory.author_id.in_(user_ids)).order_by(Memory.id.desc()).limit(3).all()
-    for m in recent_memories: activities.append({'type': 'memory', 'time': m.id, 'text': f"{m.author.username} 添加了新回忆: {m.title}"})
+    for m in recent_memories: activities.append({'type': 'memory', 'time': m.created_at, 'text': f"{m.author.username} 添加了新回忆：{m.title}"})
     recent_wishes = WishlistItem.query.filter(WishlistItem.author_id.in_(user_ids)).order_by(WishlistItem.id.desc()).limit(3).all()
     for w in recent_wishes:
         action = "完成了愿望" if w.is_completed else "许下了愿望"
-        activities.append({'type': 'wishlist', 'time': w.id, 'text': f"{w.author.username} {action}: {w.content}"})
+        activities.append({'type': 'wishlist', 'time': w.created_at, 'text': f"{w.author.username} {action}：{w.content}"})
     recent_journals = JournalEntry.query.filter(JournalEntry.author_id.in_(user_ids)).order_by(JournalEntry.id.desc()).limit(3).all()
-    for j in recent_journals: activities.append({'type': 'journal', 'time': j.id, 'text': f"{j.author.username} 写了一篇日记 ({j.date_str})"})
+    for j in recent_journals: activities.append({'type': 'journal', 'time': j.updated_at, 'text': f"{j.author.username} 写了一篇日记（{j.date_str}）"})
     activities.sort(key=lambda x: x['time'], reverse=True)
     
     # 获取冰箱贴
@@ -308,12 +602,37 @@ def index():
             'title': item.title,
             'target_date': item.target_date.strftime('%Y-%m-%d'),
             'type': item.item_type,
-            'author': User.query.get(item.author_id).username,
+            'author': db.session.get(User, item.author_id).username,
             'diff_days': abs(diff_days),
             'is_past': diff_days <= 0
         })
     
-    return render_template('index.html', activities=activities[:10], fridge_data=fridge_data)
+    active_question = DailyQuestion.query.filter_by(status='open').order_by(DailyQuestion.id.desc()).first()
+    today_str = today_date.isoformat()
+    weekday_names = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+    today_label = f"{today_date.year}年{today_date.month}月{today_date.day}日 · {weekday_names[today_date.weekday()]}"
+    check_ins = DailyCheckIn.query.filter(
+        DailyCheckIn.date_str == today_str, DailyCheckIn.user_id.in_(user_ids)
+    ).all()
+    check_in_map = {item.user_id: item for item in check_ins}
+
+    on_this_day = Memory.query.filter(
+        Memory.author_id.in_(user_ids), Memory.memory_date.isnot(None),
+        db.extract('month', Memory.memory_date) == today_date.month,
+        db.extract('day', Memory.memory_date) == today_date.day,
+        db.extract('year', Memory.memory_date) < today_date.year
+    ).order_by(Memory.memory_date.desc()).first()
+
+    start_date = datetime.datetime.strptime(app.config['RELATIONSHIP_START_DATE'], '%Y-%m-%d').date()
+    anniversary_days = max(1, (today_date - start_date).days + 1)
+    week_start = (today_date - datetime.timedelta(days=today_date.weekday())).isoformat()
+    weekly_task = CoupleTask.query.filter_by(week_start=week_start).order_by(CoupleTask.id.desc()).first()
+    return render_template(
+        'index.html', activities=activities[:8], fridge_data=fridge_data,
+        active_question=active_question, check_in_map=check_in_map,
+        on_this_day=on_this_day, anniversary_days=anniversary_days,
+        weekly_task=weekly_task, today_label=today_label
+    )
 
 # (菜谱路由保持不变: recipes_list, add_recipe, recipe_detail, delete_recipe, add_log, what_can_i_make)
 # ... (为简洁省略，请保留原代码) ...
@@ -322,7 +641,7 @@ def index():
 def recipes_list():
     user_ids = [current_user.id]
     if current_user.partner_id: user_ids.append(current_user.partner_id)
-    system_user = User.query.filter_by(username="GitHub how to cook").first()
+    system_user = User.query.filter_by(username=SYSTEM_RECIPE_USERNAME).first()
     if system_user: user_ids.append(system_user.id)
     all_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).order_by(Recipe.category.asc(), Recipe.id.desc()).all()
 
@@ -343,43 +662,59 @@ def recipes_list():
 @login_required
 def add_recipe():
     if request.method == 'POST':
-        new_recipe = Recipe(name=request.form['recipe_name'], instructions=request.form['instructions'], category=request.form.get('category', '') or None, user_id=current_user.id)
+        recipe_name = request.form.get('recipe_name', '').strip()
+        if not recipe_name:
+            flash('菜谱名称不能为空', 'error')
+            return redirect(url_for('add_recipe'))
+        new_recipe = Recipe(name=recipe_name, instructions=request.form.get('instructions', '').strip(), category=request.form.get('category', '').strip() or None, user_id=current_user.id)
         db.session.add(new_recipe)
-        try: db.session.commit()
-        except: db.session.rollback(); return redirect(url_for('add_recipe'))
-        if 'recipe_image' in request.files:
-            f = request.files['recipe_image']
-            if f.filename != '' and allowed_file(f.filename):
-                fname = secure_filename(f.filename); ext = fname.rsplit('.', 1)[1].lower()
-                new_recipe.image_file = f"recipe_{new_recipe.id}.{ext}"
-                f.save(os.path.join(app.config['UPLOAD_FOLDER'], new_recipe.image_file))
-        ing_names = request.form.getlist('ingredient_name[]'); ing_qtys = request.form.getlist('ingredient_qty[]')
-        for n, q in zip(ing_names, ing_qtys): db.session.add(Ingredient(name=n, quantity=q, recipe_id=new_recipe.id))
-        sea_names = request.form.getlist('seasoning_name[]'); sea_qtys = request.form.getlist('seasoning_qty[]')
-        for n, q in zip(sea_names, sea_qtys): db.session.add(Seasoning(name=n, quantity=q, recipe_id=new_recipe.id))
-        db.session.commit(); return redirect(url_for('recipes_list'))
+        try:
+            db.session.flush()
+            image_name = save_uploaded_image(request.files.get('recipe_image'), 'recipe')
+            if image_name:
+                new_recipe.image_file = image_name
+            ing_names = request.form.getlist('ingredient_name[]'); ing_qtys = request.form.getlist('ingredient_qty[]')
+            for n, q in zip(ing_names, ing_qtys):
+                if n.strip(): db.session.add(Ingredient(name=n.strip(), quantity=q.strip(), recipe_id=new_recipe.id))
+            sea_names = request.form.getlist('seasoning_name[]'); sea_qtys = request.form.getlist('seasoning_qty[]')
+            for n, q in zip(sea_names, sea_qtys):
+                if n.strip(): db.session.add(Seasoning(name=n.strip(), quantity=q.strip(), recipe_id=new_recipe.id))
+            db.session.commit()
+            return redirect(url_for('recipes_list'))
+        except Exception as exc:
+            db.session.rollback()
+            app.logger.warning('add recipe failed: %s', exc)
+            flash('保存菜谱失败，名称可能已经存在。', 'error')
+            return redirect(url_for('add_recipe'))
     return render_template('add_recipe.html')
 @app.route('/recipe/<int:recipe_id>')
 @login_required
 def recipe_detail(recipe_id):
     user_ids = [current_user.id]
     if current_user.partner_id: user_ids.append(current_user.partner_id)
-    system_user = User.query.filter_by(username="GitHub how to cook").first()
+    system_user = User.query.filter_by(username=SYSTEM_RECIPE_USERNAME).first()
     if system_user: user_ids.append(system_user.id)
     recipe = Recipe.query.filter(Recipe.id == recipe_id, Recipe.user_id.in_(user_ids)).first()
     if not recipe: return redirect(url_for('recipes_list'))
-    instructions_html = md_lib.markdown(recipe.instructions or '')
+    instructions_html = render_safe_markdown(recipe.instructions)
     return render_template('recipe_detail.html', recipe=recipe, instructions_html=instructions_html)
 @app.route('/recipe/<int:recipe_id>/delete', methods=['POST'])
 @login_required
 def delete_recipe(recipe_id):
     r = Recipe.query.get_or_404(recipe_id)
-    if r.author_id == current_user.id: db.session.delete(r); db.session.commit()
+    if r.user_id != current_user.id:
+        abort(403)
+    db.session.delete(r); db.session.commit()
     return redirect(url_for('recipes_list'))
 @app.route('/recipe/<int:recipe_id>/add_log', methods=['POST'])
 @login_required
 def add_log(recipe_id):
-    new_log = CookingLog(time_taken=request.form['time_taken'], notes=request.form['notes'], recipe_id=recipe_id)
+    recipe = Recipe.query.get_or_404(recipe_id)
+    system_user = User.query.filter_by(username=SYSTEM_RECIPE_USERNAME).first()
+    allowed_ids = shared_user_ids() + ([system_user.id] if system_user else [])
+    if recipe.user_id not in allowed_ids:
+        abort(404)
+    new_log = CookingLog(time_taken=request.form.get('time_taken', '').strip(), notes=request.form.get('notes', '').strip(), recipe_id=recipe_id)
     db.session.add(new_log); db.session.commit()
     return redirect(url_for('recipe_detail', recipe_id=recipe_id))
 @app.route('/what_can_i_make', methods=['GET', 'POST'])
@@ -387,7 +722,7 @@ def add_log(recipe_id):
 def what_can_i_make():
     user_ids = [current_user.id]
     if current_user.partner_id: user_ids.append(current_user.partner_id)
-    system_user = User.query.filter_by(username="GitHub how to cook").first()
+    system_user = User.query.filter_by(username=SYSTEM_RECIPE_USERNAME).first()
     if system_user: user_ids.append(system_user.id)
     perfect_matches = []; partial_matches = []; pantry_input = ""
     if request.method == 'POST':
@@ -416,7 +751,7 @@ def ai_menu():
         if current_user.partner_id:
             user_ids.append(current_user.partner_id)
             
-        system_user = User.query.filter_by(username="GitHub how to cook").first()
+        system_user = User.query.filter_by(username=SYSTEM_RECIPE_USERNAME).first()
         if system_user:
             user_ids.append(system_user.id)
             
@@ -461,7 +796,7 @@ def ai_menu():
                 res_json = response.json()
                 if 'output' in res_json and 'choices' in res_json['output']:
                     raw = res_json['output']['choices'][0]['message']['content']
-                    result = md_lib.markdown(raw)
+                    result = render_safe_markdown(raw)
             else:
                 flash(f'AI 接口返回错误: {response.text}', 'error')
         except Exception as e:
@@ -473,12 +808,23 @@ def ai_menu():
 @app.route('/partner', methods=['GET'])
 @login_required
 def partner_page():
-    return render_template('partner.html', partner=current_user.partner, invite_code=current_user.invite_code)
+    users = User.query.filter(User.id.in_(shared_user_ids())).order_by(User.id).all()
+    both_consented = len(users) == 2 and all(user.ai_context_consent for user in users)
+    profile = CoupleAIProfile.query.first()
+    return render_template(
+        'partner.html', partner=current_user.partner, invite_code=current_user.invite_code,
+        both_consented=both_consented, profile=profile
+    )
 @app.route('/partner/generate_code', methods=['POST'])
 @login_required
 def generate_invite_code():
+    if current_user.partner_id:
+        flash('已经绑定伴侣，无需生成邀请码。', 'error')
+        return redirect(url_for('partner_page'))
     if not current_user.invite_code:
-        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for i in range(6))
+        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+        while User.query.filter_by(invite_code=code).first():
+            code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
         current_user.invite_code = code; db.session.commit()
     return redirect(url_for('partner_page'))
 @app.route('/partner/redeem_code', methods=['POST'])
@@ -486,25 +832,19 @@ def generate_invite_code():
 def redeem_invite_code():
     code = request.form['invite_code'].strip().upper()
     target = User.query.filter_by(invite_code=code).first()
-    if target and target.id != current_user.id:
-        target.partner_id = current_user.id; current_user.partner_id = target.id; target.invite_code = None; db.session.commit()
+    if current_user.partner_id:
+        flash('当前账号已经绑定伴侣。', 'error')
+    elif not target or target.id == current_user.id:
+        flash('邀请码无效。', 'error')
+    elif target.partner_id:
+        flash('该账号已经绑定伴侣。', 'error')
+    else:
+        target.partner_id = current_user.id
+        current_user.partner_id = target.id
+        target.invite_code = None
+        db.session.commit()
+        flash('伴侣绑定成功。', 'success')
     return redirect(url_for('partner_page'))
-
-def send_push(user, title, body):
-    if not user.push_subscription or not VAPID_PRIVATE_KEY:
-        return
-    try:
-        sub = json.loads(user.push_subscription)
-        webpush(
-            subscription_info=sub,
-            data=json.dumps({"title": title, "body": body}),
-            vapid_private_key=VAPID_PRIVATE_KEY,
-            vapid_claims=VAPID_CLAIMS
-        )
-    except WebPushException as e:
-        print(f"Web Push failed: {e}")
-    except Exception as e:
-        print(f"Web Push unexpected error: {type(e).__name__}: {e}")
 
 @app.route('/push/vapid-public-key')
 @login_required
@@ -514,7 +854,10 @@ def vapid_public_key():
 @app.route('/push/subscribe', methods=['POST'])
 @login_required
 def push_subscribe():
-    current_user.push_subscription = json.dumps(request.json)
+    subscription = request.get_json(silent=True) or {}
+    if not subscription.get('endpoint') or not isinstance(subscription.get('keys'), dict):
+        return jsonify({'status': 'error', 'message': '无效的推送订阅'}), 400
+    current_user.push_subscription = json.dumps(subscription)
     db.session.commit()
     return jsonify({"status": "ok"})
 
@@ -523,8 +866,12 @@ def push_subscribe():
 def journal():
     if not current_user.partner_id: return redirect(url_for('partner_page'))
     now = datetime.datetime.now()
-    try: year = int(request.args.get('year', now.year)); month = int(request.args.get('month', now.month))
-    except: year, month = now.year, now.month
+    try:
+        year = int(request.args.get('year', now.year)); month = int(request.args.get('month', now.month))
+        if not 1 <= month <= 12 or not 1900 <= year <= 2200:
+            raise ValueError
+    except (TypeError, ValueError):
+        year, month = now.year, now.month
     user_ids = [current_user.id, current_user.partner_id]
     entries = JournalEntry.query.filter(JournalEntry.author_id.in_(user_ids), JournalEntry.date_str.like(f"{year}-{month:02d}-%")).all()
     calendar_data = {}
@@ -533,22 +880,50 @@ def journal():
         if d not in calendar_data: calendar_data[d] = {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}
         if entry.author_id == current_user.id: calendar_data[d]['me'] = True; calendar_data[d]['me_content'] = entry.content
         else: calendar_data[d]['partner'] = True; calendar_data[d]['partner_content'] = entry.content
-    return render_template('journal.html', calendar_data=calendar_data, partner_name=current_user.partner.username, year=year, month=month, cal_matrix=calendar.monthcalendar(year, month))
+    return render_template(
+        'journal.html', calendar_data=calendar_data, partner_name=current_user.partner.username,
+        year=year, month=month, cal_matrix=calendar.monthcalendar(year, month),
+        today_str=datetime.date.today().isoformat()
+    )
 @app.route('/journal/add', methods=['POST'])
 @login_required
 def add_journal_entry():
-    data = request.json; date, content = data.get('date'), data.get('content')
-    existing = JournalEntry.query.filter_by(date_str=date, author_id=current_user.id).first()
-    if existing: existing.content = content
-    else: db.session.add(JournalEntry(date_str=date, content=content, author_id=current_user.id))
-    
-    # 并发和锁保护
+    data = request.get_json(silent=True) or {}
+    date_str = str(data.get('date', '')).strip()
+    content = str(data.get('content', '')).strip()
+    request_id = str(data.get('request_id', ''))[:64] or str(uuid.uuid4())
     try:
-        db.session.commit()
-        # 通知伴侣
+        datetime.datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'status': 'error', 'message': '日期格式无效'}), 400
+    if not content:
+        return jsonify({'status': 'error', 'message': '日记内容不能为空'}), 400
+    if len(content) > 20000:
+        return jsonify({'status': 'error', 'message': '日记内容过长'}), 400
+
+    now = utcnow()
+    statement = sqlite_insert(JournalEntry).values(
+        date_str=date_str, content=content, author_id=current_user.id,
+        created_at=now, updated_at=now, last_request_id=request_id
+    ).on_conflict_do_update(
+        index_elements=['date_str', 'author_id'],
+        set_={'content': content, 'updated_at': now, 'last_request_id': request_id}
+    )
+    try:
+        db.session.execute(statement)
+        queued_id = None
         if current_user.partner:
-            send_push(current_user.partner, '情侣小窝', f'{current_user.username} 写了一篇日记，快去看看吧！')
-        return jsonify({'status':'success'})
+            queued = enqueue_push(current_user.partner, '情侣小窝', f'{current_user.username} 写了一篇日记', url_for('journal'))
+            db.session.flush()
+            queued_id = queued.id if queued else None
+        db.session.commit()
+        if queued_id:
+            dispatch_notification(queued_id)
+        saved = JournalEntry.query.filter_by(date_str=date_str, author_id=current_user.id).first()
+        return jsonify({
+            'status': 'success', 'request_id': request_id,
+            'saved_at': saved.updated_at.isoformat() + 'Z', 'version': saved.updated_at.isoformat()
+        })
     except Exception as e:
         db.session.rollback()
         print(f"Journal save error: {e}")
@@ -599,24 +974,29 @@ def add_memory():
     if request.method == 'POST':
         new_mem = Memory(title=request.form['title'], content=request.form['content'], location=request.form['location'], author_id=current_user.id)
         if request.form['memory_date']: new_mem.memory_date = datetime.datetime.strptime(request.form['memory_date'], '%Y-%m-%d').date()
+        image_name = save_uploaded_image(request.files.get('image'), 'memory')
+        if request.files.get('image') and request.files['image'].filename and not image_name:
+            flash('图片格式无效或无法读取。', 'error')
+            return render_template('add_memory.html')
+        if image_name:
+            new_mem.image_file = image_name
         db.session.add(new_mem); db.session.commit()
-        if 'image' in request.files:
-             f = request.files['image']
-             if f.filename != '' and allowed_file(f.filename):
-                 fname = secure_filename(f.filename); ext = fname.rsplit('.', 1)[1].lower()
-                 new_mem.image_file = f"memory_{new_mem.id}.{ext}"; f.save(os.path.join(app.config['UPLOAD_FOLDER'], new_mem.image_file)); db.session.commit()
         return redirect(url_for('memories'))
     return render_template('add_memory.html')
 @app.route('/memory/<int:memory_id>')
 @login_required
 def memory_detail(memory_id):
     mem = Memory.query.get_or_404(memory_id)
+    if not can_access_author(mem.author_id):
+        abort(404)
     return render_template('memory_detail.html', memory=mem)
 @app.route('/memory/<int:memory_id>/delete', methods=['POST'])
 @login_required
 def delete_memory(memory_id):
     mem = Memory.query.get_or_404(memory_id)
-    if mem.author_id == current_user.id: db.session.delete(mem); db.session.commit()
+    if mem.author_id != current_user.id:
+        abort(403)
+    db.session.delete(mem); db.session.commit()
     return redirect(url_for('memories'))
 @app.route('/wishlist')
 @login_required
@@ -633,68 +1013,69 @@ def add_wish():
 @app.route('/wishlist/toggle/<int:item_id>', methods=['POST'])
 @login_required
 def toggle_wish(item_id):
-    item = WishlistItem.query.get(item_id)
-    if item: item.is_completed = not item.is_completed; db.session.commit()
+    item = db.session.get(WishlistItem, item_id)
+    if not item or not can_access_author(item.author_id):
+        abort(404)
+    item.is_completed = not item.is_completed; db.session.commit()
     return redirect(url_for('wishlist'))
 @app.route('/wishlist/delete/<int:item_id>', methods=['POST'])
 @login_required
 def delete_wish(item_id):
-    item = WishlistItem.query.get(item_id)
+    item = db.session.get(WishlistItem, item_id)
     if item and item.author_id == current_user.id: db.session.delete(item); db.session.commit()
     return redirect(url_for('wishlist'))
 
-# --- V5.2 UPDATE: 每日一问 (带来源标注) ---
+def get_or_create_open_question():
+    question = DailyQuestion.query.filter_by(status='open').order_by(DailyQuestion.id.desc()).first()
+    if question:
+        return question
+    content, meta = generate_question_from_ai()
+    source = 'AI 生成'
+    if not content:
+        content = choose_fallback_question()
+        source = '精选题库'
+    question = DailyQuestion(
+        content=content, date_str=datetime.date.today().isoformat(), source=source,
+        status='open', generation_meta=json.dumps(meta, ensure_ascii=False)
+    )
+    db.session.add(question)
+    try:
+        db.session.commit()
+        return question
+    except IntegrityError:
+        db.session.rollback()
+        return DailyQuestion.query.filter_by(status='open').order_by(DailyQuestion.id.desc()).first()
+
+
 @app.route('/daily_question')
 @login_required
 def daily_question():
     if not current_user.partner_id:
-        flash('请先绑定伴侣。', 'error'); return redirect(url_for('partner_page'))
+        flash('请先绑定伴侣。', 'error')
+        return redirect(url_for('partner_page'))
 
-    today_str = datetime.datetime.now().strftime('%Y-%m-%d')
-    
-    # 1. 检查今天是否已有问题
-    question = DailyQuestion.query.filter_by(date_str=today_str).first()
-    
+    requested_id = request.args.get('question_id', type=int)
+    question = db.session.get(DailyQuestion, requested_id) if requested_id else None
     if not question:
-        # --- AI 生成逻辑 ---
-        # 查询双方都点赞的最近10个问题作为偏好示例
-        liked_examples = None
-        if current_user.partner_id:
-            my_likes = {l.question_id for l in QuestionLike.query.filter_by(user_id=current_user.id).all()}
-            partner_likes = {l.question_id for l in QuestionLike.query.filter_by(user_id=current_user.partner_id).all()}
-            both_ids = list(my_likes & partner_likes)
-            if both_ids:
-                liked_qs = DailyQuestion.query.filter(DailyQuestion.id.in_(both_ids)).order_by(DailyQuestion.id.desc()).limit(10).all()
-                liked_examples = [q.content for q in liked_qs]
-        new_content = generate_question_from_ai(liked_examples=liked_examples)
-        source = "AI 生成" # 标记来源
-        
-        # 兜底
-        if not new_content:
-            new_content = random.choice(QUESTIONS_POOL)
-            source = "随机题库" # 标记来源
-            
-        question = DailyQuestion(content=new_content, date_str=today_str, source=source)
-        db.session.add(question)
-        db.session.commit()
-    
+        question = get_or_create_open_question()
+
     my_answer = DailyAnswer.query.filter_by(question_id=question.id, user_id=current_user.id).first()
     partner_answer = DailyAnswer.query.filter_by(question_id=question.id, user_id=current_user.partner_id).first()
-    is_unlocked = (my_answer is not None) and (partner_answer is not None)
-
+    is_unlocked = bool(my_answer and partner_answer)
     my_like = QuestionLike.query.filter_by(question_id=question.id, user_id=current_user.id).first()
     partner_like = QuestionLike.query.filter_by(question_id=question.id, user_id=current_user.partner_id).first()
-    both_liked = bool(my_like and partner_like)
-
-    return render_template('daily_question.html',
-                           question=question,
-                           my_answer=my_answer,
-                           partner_answer=partner_answer,
-                           is_unlocked=is_unlocked,
-                           partner_name=current_user.partner.username,
-                           my_like=my_like,
-                           partner_like=partner_like,
-                           both_liked=both_liked)
+    my_feedback = QuestionFeedback.query.filter_by(question_id=question.id, user_id=current_user.id).first()
+    users = User.query.filter(User.id.in_(shared_user_ids())).order_by(User.id).all()
+    both_consented = len(users) == 2 and all(user.ai_context_consent for user in users)
+    profile = CoupleAIProfile.query.first()
+    return render_template(
+        'daily_question.html', question=question, my_answer=my_answer,
+        partner_answer=partner_answer, is_unlocked=is_unlocked,
+        partner_name=current_user.partner.username, my_like=my_like,
+        partner_like=partner_like, both_liked=bool(my_like and partner_like),
+        my_feedback=my_feedback, feedback_reasons=QUESTION_FEEDBACK_REASONS,
+        both_consented=both_consented, profile=profile
+    )
 
 # --- V5.2 NEW: 历史回顾路由 ---
 @app.route('/daily_question/history')
@@ -703,8 +1084,7 @@ def daily_history():
     if not current_user.partner_id:
         return redirect(url_for('partner_page'))
         
-    # 1. 获取所有历史问题 (按日期倒序)
-    all_questions = DailyQuestion.query.order_by(DailyQuestion.date_str.desc()).all()
+    all_questions = DailyQuestion.query.order_by(DailyQuestion.id.desc()).all()
     
     completed_history = []
     
@@ -728,9 +1108,12 @@ def daily_history():
 @app.route('/daily_question/answer/<int:question_id>', methods=['POST'])
 @login_required
 def answer_daily_question(question_id):
-    content = request.form.get('content')
+    question = DailyQuestion.query.get_or_404(question_id)
+    content = request.form.get('content', '').strip()
     if not content:
-        flash('回答不能为空哦。', 'error'); return redirect(url_for('daily_question'))
+        flash('回答不能为空。', 'error'); return redirect(url_for('daily_question', question_id=question_id))
+    if len(content) > 5000:
+        flash('回答内容过长。', 'error'); return redirect(url_for('daily_question', question_id=question_id))
         
     existing = DailyAnswer.query.filter_by(question_id=question_id, user_id=current_user.id).first()
     if existing:
@@ -741,24 +1124,232 @@ def answer_daily_question(question_id):
         db.session.add(new_answer)
         flash('回答已提交！', 'success')
         
-    db.session.commit()
-
-    # 通知伴侣
+    db.session.flush()
+    answer_count = DailyAnswer.query.filter_by(question_id=question_id).count()
+    if answer_count >= 2:
+        question.status = 'completed'
+        question.close_reason = 'both_answered'
+        question.closed_at = utcnow()
     if current_user.partner:
-        send_push(current_user.partner, '情侣小窝', f'{current_user.username} 刚刚回答了今日问答，快去看看TA说了什么吧！')
+        queued = enqueue_push(current_user.partner, '情侣小窝', f'{current_user.username} 回答了当前问题', url_for('daily_question', question_id=question_id))
+        db.session.flush()
+        queued_id = queued.id if queued else None
+    else:
+        queued_id = None
+    db.session.commit()
+    if queued_id:
+        dispatch_notification(queued_id)
 
-    return redirect(url_for('daily_question'))
+    return redirect(url_for('daily_question', question_id=question_id))
 
 @app.route('/daily_question/<int:question_id>/like', methods=['POST'])
 @login_required
 def like_daily_question(question_id):
+    DailyQuestion.query.get_or_404(question_id)
     existing = QuestionLike.query.filter_by(question_id=question_id, user_id=current_user.id).first()
     if existing:
         db.session.delete(existing)
     else:
         db.session.add(QuestionLike(question_id=question_id, user_id=current_user.id))
     db.session.commit()
-    return redirect(url_for('daily_question'))
+    return redirect(url_for('daily_question', question_id=question_id))
+
+
+@app.route('/daily_question/<int:question_id>/feedback', methods=['POST'])
+@login_required
+def feedback_daily_question(question_id):
+    question = DailyQuestion.query.get_or_404(question_id)
+    feedback_type = request.form.get('feedback_type', '').strip()
+    reason = request.form.get('reason', '').strip() or None
+    if feedback_type not in {'disliked', 'skipped'}:
+        abort(400)
+    if reason and reason not in QUESTION_FEEDBACK_REASONS:
+        abort(400)
+    feedback = QuestionFeedback.query.filter_by(question_id=question_id, user_id=current_user.id).first()
+    if feedback:
+        feedback.feedback_type = feedback_type
+        feedback.reason = reason
+        feedback.created_at = utcnow()
+    else:
+        db.session.add(QuestionFeedback(
+            question_id=question_id, user_id=current_user.id,
+            feedback_type=feedback_type, reason=reason
+        ))
+    if feedback_type == 'skipped' and question.status == 'open':
+        question.status = 'skipped'
+        question.close_reason = reason or 'skipped'
+        question.closed_at = utcnow()
+    db.session.commit()
+    flash('反馈已记录。', 'success')
+    if feedback_type == 'skipped':
+        return redirect(url_for('daily_question'))
+    return redirect(url_for('daily_question', question_id=question_id))
+
+
+@app.route('/ai-profile/consent', methods=['POST'])
+@login_required
+def ai_profile_consent():
+    current_user.ai_context_consent = request.form.get('consent') == 'yes'
+    db.session.commit()
+    flash('AI 内容授权已更新。', 'success')
+    return redirect(url_for('partner_page'))
+
+
+def _build_profile_source():
+    ids = shared_user_ids()
+    parts = []
+    for item in JournalEntry.query.filter(JournalEntry.author_id.in_(ids)).order_by(JournalEntry.id.desc()).limit(20):
+        parts.append(f'日记主题：{item.content[:300]}')
+    for item in Memory.query.filter(Memory.author_id.in_(ids)).order_by(Memory.id.desc()).limit(15):
+        parts.append(f'回忆：{item.title}；{item.content[:200]}')
+    for item in WishlistItem.query.filter(WishlistItem.author_id.in_(ids)).order_by(WishlistItem.id.desc()).limit(15):
+        parts.append(f'愿望：{item.content}')
+    for item in DailyAnswer.query.filter(DailyAnswer.user_id.in_(ids)).order_by(DailyAnswer.id.desc()).limit(20):
+        parts.append(f'问答内容：{item.content[:250]}')
+    return '\n'.join(parts)[:10000]
+
+
+@app.route('/ai-profile/refresh', methods=['POST'])
+@login_required
+def refresh_ai_profile():
+    users = User.query.filter(User.id.in_(shared_user_ids())).all()
+    if len(users) != 2 or not all(user.ai_context_consent for user in users):
+        flash('需要双方都开启授权后才能更新 AI 档案。', 'error')
+        return redirect(url_for('partner_page'))
+    api_key = app.config.get('DASHSCOPE_API_KEY')
+    if not api_key:
+        flash('尚未配置 AI API Key。', 'error')
+        return redirect(url_for('partner_page'))
+    prompt = f"""将以下情侣内容整理成不超过600字的客观档案，只保留共同兴趣、近期生活主题、沟通偏好和明确禁区。不要评价关系，不推断疾病或人格。\n{_build_profile_source()}"""
+    try:
+        response = requests.post(
+            'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            json={'model': 'deepseek-v4-flash', 'input': {'messages': [{'role': 'user', 'content': prompt}]}, 'parameters': {'result_format': 'message', 'temperature': 0.2}},
+            timeout=20
+        )
+        response.raise_for_status()
+        summary = response.json()['output']['choices'][0]['message']['content'].strip()[:1200]
+        profile = CoupleAIProfile.query.first() or CoupleAIProfile()
+        profile.summary = summary
+        profile.updated_at = utcnow()
+        db.session.add(profile)
+        db.session.commit()
+        flash('AI 情侣档案已更新。', 'success')
+    except Exception as exc:
+        app.logger.warning('profile refresh failed: %s', exc)
+        flash('档案更新失败，请稍后重试。', 'error')
+    return redirect(url_for('partner_page'))
+
+
+@app.route('/daily-check-in', methods=['POST'])
+@login_required
+def daily_check_in():
+    mood = request.form.get('mood', '').strip()
+    energy = request.form.get('energy', '').strip()
+    need = request.form.get('need', '').strip()
+    if mood not in {'开心', '平静', '低落', '焦虑', '疲惫'}:
+        abort(400)
+    if energy not in {'充足', '一般', '很低'}:
+        abort(400)
+    if need not in {'想聊聊', '想抱抱', '需要陪伴', '想安静一下', '一切都好'}:
+        abort(400)
+    today = datetime.date.today().isoformat()
+    check_in = DailyCheckIn.query.filter_by(date_str=today, user_id=current_user.id).first()
+    if check_in:
+        check_in.mood, check_in.energy, check_in.need = mood, energy, need
+        check_in.updated_at = utcnow()
+    else:
+        db.session.add(DailyCheckIn(date_str=today, user_id=current_user.id, mood=mood, energy=energy, need=need))
+    if current_user.partner:
+        queued = enqueue_push(current_user.partner, '情侣小窝', f'{current_user.username} 更新了今天的状态', url_for('index'))
+        db.session.flush()
+        queued_id = queued.id if queued else None
+    else:
+        queued_id = None
+    db.session.commit()
+    if queued_id:
+        dispatch_notification(queued_id)
+    flash('今天的状态已更新。', 'success')
+    return redirect(url_for('index'))
+
+
+TASK_POOL = [
+    '一起选一首本周主题歌', '交换一张今天最喜欢的照片', '一起散步十分钟，不带耳机',
+    '从愿望清单里挑一件近期能完成的小事', '一起复刻一道以前吃过的菜',
+    '各自说一件这周想感谢对方的小事', '一起整理并保存一张最近的合照'
+]
+
+
+@app.route('/weekly-task/create', methods=['POST'])
+@login_required
+def create_weekly_task():
+    today = datetime.date.today()
+    week_start = (today - datetime.timedelta(days=today.weekday())).isoformat()
+    existing = CoupleTask.query.filter_by(week_start=week_start).first()
+    if not existing:
+        recent_titles = {task.title for task in CoupleTask.query.order_by(CoupleTask.id.desc()).limit(5)}
+        options = [title for title in TASK_POOL if title not in recent_titles] or TASK_POOL
+        db.session.add(CoupleTask(week_start=week_start, title=random.choice(options)))
+        db.session.commit()
+    return redirect(url_for('index'))
+
+
+@app.route('/weekly-task/<int:task_id>/<action>', methods=['POST'])
+@login_required
+def update_weekly_task(task_id, action):
+    task = CoupleTask.query.get_or_404(task_id)
+    if action not in {'complete', 'skip'}:
+        abort(400)
+    task.status = 'completed' if action == 'complete' else 'skipped'
+    task.completed_by = current_user.id if action == 'complete' else None
+    db.session.commit()
+    return redirect(url_for('index'))
+
+
+def current_week_start():
+    today = datetime.date.today()
+    return (today - datetime.timedelta(days=today.weekday())).isoformat()
+
+
+@app.route('/weekly', methods=['GET', 'POST'])
+@login_required
+def weekly_reflection():
+    if not current_user.partner_id:
+        return redirect(url_for('partner_page'))
+    week_start = current_week_start()
+    reflection = WeeklyReflection.query.filter_by(week_start=week_start).first()
+    if not reflection:
+        reflection = WeeklyReflection(week_start=week_start)
+        db.session.add(reflection)
+        db.session.commit()
+    users = sorted(shared_user_ids())
+    current_slot = 1 if current_user.id == users[0] else 2
+    if request.method == 'POST':
+        gratitude = request.form.get('gratitude', '').strip()[:3000]
+        setattr(reflection, f'gratitude_user_{current_slot}', gratitude or None)
+        setattr(reflection, f'confirmed_user_{current_slot}', bool(gratitude))
+        week_date = datetime.date.fromisoformat(week_start)
+        week_end = week_date + datetime.timedelta(days=6)
+        answer_count = DailyAnswer.query.join(DailyQuestion).filter(
+            DailyQuestion.date_str.between(week_start, week_end.isoformat()),
+            DailyAnswer.user_id.in_(users)
+        ).count()
+        memory_count = Memory.query.filter(
+            Memory.author_id.in_(users), Memory.created_at >= datetime.datetime.combine(week_date, datetime.time.min)
+        ).count()
+        reflection.summary = f'这周留下了 {answer_count} 条问答和 {memory_count} 条新回忆。'
+        db.session.commit()
+        flash('本周小结已保存。', 'success')
+        return redirect(url_for('weekly_reflection'))
+    my_gratitude = getattr(reflection, f'gratitude_user_{current_slot}') or ''
+    partner_gratitude = getattr(reflection, f'gratitude_user_{2 if current_slot == 1 else 1}') or ''
+    both_confirmed = reflection.confirmed_user_1 and reflection.confirmed_user_2
+    return render_template(
+        'weekly.html', reflection=reflection, my_gratitude=my_gratitude,
+        partner_gratitude=partner_gratitude if both_confirmed else None,
+        both_confirmed=both_confirmed, partner_name=current_user.partner.username
+    )
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=app_env == 'development', port=5000)

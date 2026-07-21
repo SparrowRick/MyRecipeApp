@@ -1,122 +1,70 @@
 {% extends "base.html" %}
+{% block title %}交换信笺 · 我们的小窝{% endblock %}
 {% block content %}
-    <div class="max-w-2xl mx-auto">
-        
-        <!-- 顶部导航栏：左边是返回，右边就是【历史回顾】入口 -->
-        <div class="flex justify-between items-center mb-6">
-            <a href="{{ url_for('index') }}" class="text-gray-500 hover:text-gray-700 flex items-center">
-                <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i> 返回首页
-            </a>
-            
-            <!-- ！！！入口在这里！！！ -->
-            <a href="{{ url_for('daily_history') }}" class="text-rose-500 hover:text-rose-700 font-semibold flex items-center">
-                <i data-lucide="history" class="w-4 h-4 mr-1"></i> 历史回顾
-            </a>
+<div class="letter-page">
+    <header class="page-head page-head-row">
+        <div><span class="eyebrow">A LETTER FOR US</span><h1 class="page-title">交换信笺</h1><p class="page-subtitle">不急着答得漂亮，真实地写下此刻就好。</p></div>
+        <a class="quiet-action" href="{{ url_for('daily_history') }}"><i data-lucide="archive"></i>旧信笺</a>
+    </header>
+
+    <article class="paper-sheet question-letter" data-reveal>
+        <span class="tape top" aria-hidden="true"></span>
+        <div class="letter-toolbar">
+            <span class="eyebrow">{{ question.source }} · {{ question.date_str }}</span>
+            <div class="question-menu">
+                <button class="icon-button" type="button" data-toggle-menu="questionActions" aria-expanded="false" aria-label="问题反馈与更多操作"><i data-lucide="more-horizontal"></i></button>
+                <div id="questionActions" class="question-menu-panel" data-menu-panel hidden>
+                    <form action="{{ url_for('like_daily_question', question_id=question.id) }}" method="POST"><button class="text-action" type="submit"><i data-lucide="heart"></i>{{ '取消喜欢' if my_like else '喜欢这道题' }}</button></form>
+                    <button class="text-action" type="button" data-open-drawer="dislike"><i data-lucide="message-square-warning"></i>不太喜欢</button>
+                    {% if question.status == 'open' and not my_answer and not partner_answer %}<button class="text-action danger" type="button" data-open-drawer="skip"><i data-lucide="forward"></i>跳过这道题</button>{% endif %}
+                </div>
+            </div>
         </div>
 
-        <div class="text-center mb-8">
-            <!-- 来源和日期标签 -->
-            <div class="flex justify-center gap-2 mb-3">
-                <span class="inline-block bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold">
-                    📅 {{ question.date_str }}
-                </span>
-                <!-- 根据来源显示不同颜色 -->
-                <span class="inline-block px-3 py-1 rounded-full text-xs font-bold
-                    {% if 'AI' in question.source %} bg-purple-100 text-purple-600 {% else %} bg-yellow-100 text-yellow-700 {% endif %}">
-                    ✨ {{ question.source }}
-                </span>
-            </div>
-            <h2 class="text-2xl md:text-3xl font-bold text-gray-800">{{ question.content }}</h2>
+        <p class="letter-question">{{ question.content }}</p>
 
-            <!-- 点赞按钮 -->
-            <div class="flex justify-center gap-3 mt-4">
-                <form action="{{ url_for('like_daily_question', question_id=question.id) }}" method="POST">
-                    <button type="submit" class="flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold transition-all
-                        {% if my_like %} bg-rose-500 text-white {% else %} bg-gray-100 text-gray-500 hover:bg-rose-100 {% endif %}">
-                        ❤️ 我喜欢{% if my_like %}（已赞）{% endif %}
-                    </button>
-                </form>
-                <span class="flex items-center gap-1 px-4 py-2 rounded-full text-sm
-                    {% if partner_like %} bg-rose-100 text-rose-600 {% else %} bg-gray-50 text-gray-400 {% endif %}">
-                    {% if partner_like %}❤️ TA也喜欢{% else %}💤 TA未点赞{% endif %}
-                </span>
-            </div>
-            {% if both_liked %}
-            <p class="text-xs text-rose-500 mt-2">✨ 双方都喜欢这个问题，AI 下次会参考这种风格！</p>
-            {% endif %}
+        <div class="envelope-status" aria-label="双方回答状态">
+            <div class="envelope-mark {{ 'ready' if my_answer else '' }}"><i data-lucide="{{ 'mail-check' if my_answer else 'mail' }}"></i><b>我</b><span>{{ '已经写好' if my_answer else '还没落笔' }}</span></div>
+            <div class="envelope-mark {{ 'ready' if partner_answer else '' }}"><i data-lucide="{{ 'mail-check' if partner_answer else 'mail' }}"></i><b>{{ partner_name }}</b><span>{{ '已经写好' if partner_answer else '还没落笔' }}</span></div>
         </div>
 
-        <div class="grid gap-6">
-            
-            <!-- 我的回答 -->
-            <div class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-blue-500">
-                <h3 class="font-bold text-gray-500 mb-2 flex items-center">
-                    <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                    我的回答
-                </h3>
-                
-                {% if my_answer %}
-                    <p class="text-lg text-gray-800">{{ my_answer.content }}</p>
-                    <button onclick="document.getElementById('edit-form').style.display='block'" class="text-sm text-blue-500 mt-2 hover:underline">修改回答</button>
-                {% else %}
-                    <form action="{{ url_for('answer_daily_question', question_id=question.id) }}" method="POST">
-                        <textarea name="content" rows="3" class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-300" placeholder="写下你的想法..." required></textarea>
-                        <button type="submit" class="btn mt-2 w-full">提交回答</button>
-                    </form>
-                {% endif %}
-                
-                <!-- 修改表单 (默认隐藏) -->
-                {% if my_answer %}
-                <form id="edit-form" action="{{ url_for('answer_daily_question', question_id=question.id) }}" method="POST" style="display:none;" class="mt-4">
-                    <textarea name="content" rows="3" class="w-full border rounded-lg p-3">{{ my_answer.content }}</textarea>
-                    <button type="submit" class="btn mt-2">保存修改</button>
-                </form>
-                {% endif %}
-            </div>
+        {% if question.status == 'open' %}
+        <form action="{{ url_for('answer_daily_question', question_id=question.id) }}" method="POST" class="answer-letter">
+            <label for="answer-content">写给这道问题的回答</label>
+            <textarea id="answer-content" name="content" rows="6" maxlength="5000" required placeholder="从脑海里最先出现的那句话开始……">{{ my_answer.content if my_answer else '' }}</textarea>
+            <button class="primary-action full" type="submit"><i data-lucide="send"></i>{{ '重新封好这封信' if my_answer else '把回答放进信封' }}</button>
+        </form>
+        {% endif %}
 
-            <!-- 伴侣的回答 -->
-            <div class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-rose-500 relative overflow-hidden">
-                <h3 class="font-bold text-gray-500 mb-2 flex items-center">
-                    <span class="w-2 h-2 bg-rose-500 rounded-full mr-2"></span>
-                    {{ partner_name }} 的回答
-                </h3>
-
-                {% if is_unlocked %}
-                    <!-- 状态 A: 已解锁 -->
-                    <p class="text-lg text-gray-800">{{ partner_answer.content }}</p>
-                    <div class="mt-4 p-3 bg-yellow-50 text-yellow-800 rounded-lg text-sm text-center">
-                        🎉 双方已完成，答案已解锁！快去和TA讨论一下吧！
-                    </div>
-                {% else %}
-                    <!-- 状态 B: 未解锁 (模糊遮罩) -->
-                    <div class="filter blur-sm select-none">
-                        <p class="text-lg text-gray-400">
-                            这里是对方的回答内容，但是你看不到。
-                            这里是对方的回答内容，但是你看不到。
-                        </p>
-                    </div>
-                    
-                    <div class="absolute inset-0 flex items-center justify-center bg-white bg-opacity-60">
-                        <div class="text-center p-4 bg-white shadow-xl rounded-xl border border-rose-100">
-                            <div class="text-4xl mb-2">🔒</div>
-                            {% if partner_answer %}
-                                <p class="font-bold text-rose-600">TA 已经回答啦！</p>
-                                <p class="text-sm text-gray-500">快提交你的回答来解锁。</p>
-                            {% else %}
-                                <p class="font-bold text-gray-500">TA 还没有回答</p>
-                                <p class="text-sm text-gray-400">等TA回答后才能看到哦</p>
-                            {% endif %}
-                        </div>
-                    </div>
-                {% endif %}
-            </div>
-
+        {% if is_unlocked %}
+        <div class="exchange-letters">
+            <section class="exchange-letter"><span class="hand-label">我写下的</span><p>{{ my_answer.content }}</p></section>
+            <section class="exchange-letter"><span class="hand-label">{{ partner_name }} 写下的</span><p>{{ partner_answer.content }}</p></section>
         </div>
-    </div>
-    <!-- 激活图标 -->
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-        });
-    </script>
+        {% elif my_answer and question.status == 'open' %}
+        <p class="chapter-note centered-note">你的信已经收好，等 {{ partner_name }} 写完后再一起拆开。</p>
+        {% endif %}
+
+        {% if both_liked %}<p class="hand-label liked-note">这是一道你们都喜欢的问题，之后会多遇见这种感觉。</p>{% endif %}
+    </article>
+</div>
+
+<div class="drawer" data-drawer="dislike" hidden>
+    <button class="drawer-scrim" type="button" data-close-drawer aria-label="关闭反馈"></button>
+    <section class="drawer-paper" role="dialog" aria-modal="true" aria-labelledby="dislikeTitle">
+        <div class="drawer-handle"></div><header class="drawer-header"><div><span class="eyebrow">A SMALL NOTE</span><h2 id="dislikeTitle">这道题哪里不太对？</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭"><i data-lucide="x"></i></button></header>
+        <form action="{{ url_for('feedback_daily_question', question_id=question.id) }}" method="POST"><input type="hidden" name="feedback_type" value="disliked"><div class="field"><label for="dislike-reason">选一个最接近的原因</label><select id="dislike-reason" name="reason" required>{% for code, label in feedback_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div><button class="primary-action full" type="submit">记住这次感受</button></form>
+    </section>
+</div>
+
+{% if question.status == 'open' and not my_answer and not partner_answer %}
+<div class="drawer" data-drawer="skip" hidden>
+    <button class="drawer-scrim" type="button" data-close-drawer aria-label="关闭跳过问题"></button>
+    <section class="drawer-paper" role="dialog" aria-modal="true" aria-labelledby="skipTitle">
+        <div class="drawer-handle"></div><header class="drawer-header"><div><span class="eyebrow">TURN THE PAGE</span><h2 id="skipTitle">今天不聊这道题</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭"><i data-lucide="x"></i></button></header>
+        <p class="page-subtitle">告诉系统一点原因，下一道问题会更懂你们。</p>
+        <form action="{{ url_for('feedback_daily_question', question_id=question.id) }}" method="POST"><input type="hidden" name="feedback_type" value="skipped"><div class="field"><label for="skip-reason">为什么想翻过这一页</label><select id="skip-reason" name="reason" required>{% for code, label in feedback_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div><button class="primary-action full" type="submit"><i data-lucide="book-open"></i>翻到下一页</button></form>
+    </section>
+</div>
+{% endif %}
 {% endblock %}

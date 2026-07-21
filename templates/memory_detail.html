@@ -1,63 +1,20 @@
 {% extends "base.html" %}
+{% block title %}{{ memory.title }} · 回忆{% endblock %}
 {% block content %}
-    
-    <!-- 回忆标题 -->
-    <h2>{{ memory.title }}</h2>
-    
-    <!-- 元数据: 日期和地点 -->
-    <p style="color: #666; font-size: 0.9em; margin-top: -10px;">
-        {% if memory.memory_date %}
-            <span>{{ memory.memory_date.strftime('%Y年%m月%d日') }}</span>
-        {% endif %}
-        {% if memory.location %}
-            <span>· {{ memory.location }}</span>
-        {% endif %}
-    </p>
-    
-    <!-- 元数据: 作者 -->
-    <p style="font-size: 0.9em; color: #555;">
-        (由 
-        {% if memory.author_id == current_user.id %}
-            <strong style="color: #007BFF;">我</strong>
-        {% else %}
-            <strong style="color: #28a745;">{{ memory.author.username }}</strong>
-        {% endif %}
-        添加)
-    </p>
-
-    <!-- 纪念册图片 -->
-    <div class="memory-image" style="margin-top: 20px; margin-bottom: 20px;">
-        <img src="{{ url_for('static', filename='uploads/' + memory.image_file) }}" 
-             alt="{{ memory.title }}" 
-             style="width:100%; max-width:600px; height:auto; border-radius: 8px;">
-    </div>
-    
-    <!-- 纪念册故事/正文 -->
-    <h4>💖 我们的故事:</h4>
-    <!-- 
-      我们使用 <pre> 标签来保留您在 <textarea> 中输入的换行符
-      white-space: pre-wrap; 会自动换行
-    -->
-    <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: Arial, sans-serif; font-size: 1.1em; line-height: 1.6;">{{ memory.content }}</pre>
-
-    <hr style="margin-top: 30px;">
-
-    <!-- 
-      危险操作区: 删除按钮
-      (只有这篇回忆的作者才能看到这个按钮)
-    -->
+<article class="memory-detail">
+    <header class="page-head center">
+        <span class="eyebrow">A PIECE OF US</span>
+        <h1 class="page-title">{{ memory.title }}</h1>
+        <p class="page-subtitle">{% if memory.memory_date %}{{ memory.memory_date.strftime('%Y年%m月%d日') }}{% else %}某个值得记住的日子{% endif %}{% if memory.location %} · {{ memory.location }}{% endif %} · {{ '我' if memory.author_id == current_user.id else memory.author.username }} 留下</p>
+    </header>
+    {% if memory.image_file and memory.image_file != 'default.jpg' %}<figure class="memory-detail-photo"><img src="{{ url_for('static', filename='uploads/' + memory.image_file) }}" alt="{{ memory.title }}" loading="lazy" width="900" height="650"></figure>{% endif %}
+    <section class="paper-sheet memory-detail-copy">
+        <span class="tape tape-left" aria-hidden="true"></span>
+        <div class="prose-paper preserve-lines">{{ memory.content }}</div>
+    </section>
+    <footer class="form-actions"><a class="text-action" href="{{ url_for('memories') }}"><i data-lucide="arrow-left"></i>回到纪念册</a>
     {% if memory.author_id == current_user.id %}
-    <div class="danger-zone" style="margin-top: 20px;">
-        <h3>危险操作</h3>
-        <form action="{{ url_for('delete_memory', memory_id=memory.id) }}" 
-              method="POST" 
-              onsubmit="return confirm('您确定要永久删除这篇回忆吗？此操作无法撤销！');">
-            
-            <button type="submit" class="btn btn-danger">
-                删除这篇回忆
-            </button>
-        </form>
-    </div>
-    {% endif %}
-
+    <div class="question-menu"><button class="icon-button" type="button" data-toggle-menu="memoryActions" aria-expanded="false" aria-label="更多操作"><i data-lucide="more-horizontal"></i></button><div id="memoryActions" class="question-menu-panel" data-menu-panel hidden><form action="{{ url_for('delete_memory', memory_id=memory.id) }}" method="POST" onsubmit="return confirm('确定永久删除这段回忆吗？此操作无法撤销。');"><button class="text-action danger" type="submit"><i data-lucide="trash-2"></i>删除这段回忆</button></form></div></div>
+    {% endif %}</footer>
+</article>
 {% endblock %}

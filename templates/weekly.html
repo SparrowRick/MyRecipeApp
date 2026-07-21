@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}本周小结 · 我们的小窝{% endblock %}
+{% block content %}
+<header class="page-head center"><span class="eyebrow">A WEEK WITH YOU</span><h1 class="page-title">交换一张本周卡片</h1><p class="page-subtitle">只记下发生过的事和想说的谢谢，不给关系打分。</p></header>
+{% if reflection.summary %}<p class="weekly-summary hand-label">{{ reflection.summary }}</p>{% endif %}
+<section class="weekly-exchange">
+    <article class="weekly-card paper-sheet"><span class="tape tape-left" aria-hidden="true"></span><span class="eyebrow">FROM ME</span><h2>这一周，我想谢谢你</h2><form method="POST"><div class="field"><label class="sr-only" for="gratitude">写给 {{ partner_name }} 的感谢</label><textarea id="gratitude" name="gratitude" rows="8" maxlength="3000" placeholder="可以是一件很小的事，比如那天你记得帮我留了一盏灯。" required>{{ my_gratitude }}</textarea></div><button class="primary-action full-action" type="submit"><i data-lucide="send"></i>{{ '更新我的卡片' if my_gratitude else '把卡片放进去' }}</button></form></article>
+    <article class="weekly-card paper-sheet"><span class="tape tape-right" aria-hidden="true"></span><span class="eyebrow">FROM {{ partner_name | upper }}</span><h2>{{ partner_name }} 写给我的</h2>{% if both_confirmed %}<p class="weekly-letter preserve-lines">{{ partner_gratitude }}</p><span class="hand-label">这周的两张卡片已经交换</span>{% else %}<div class="sealed-letter"><i data-lucide="mail"></i><p>两个人都写好后，这张卡片才会一起打开。</p></div>{% endif %}</article>
+</section>
+{% endblock %}

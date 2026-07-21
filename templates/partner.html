@@ -1,187 +1,58 @@
 {% extends "base.html" %}
+{% block title %}伴侣与设置 · 我们的小窝{% endblock %}
 {% block content %}
-    <h2>❤️ 我的伴侣</h2>
-    
-    <p>这是您与伴侣的连接中心。您们必须互相绑定后才能使用共享功能（如共享日记）。</p>
-
-    <hr>
-
-    <!-- 
-      情况一: 您已经成功绑定了伴侣
-      (current_user.partner 是我们在 User 模型中定义的“虚拟”关系)
-    -->
+<header class="page-head"><span class="eyebrow">OUR SETTINGS</span><h1 class="page-title">伴侣与设置</h1><p class="page-subtitle">只放与你们共同空间有关的连接、通知和 AI 个性化。</p></header>
+<div class="settings-list">
+    <section class="settings-group"><h2>两个人的连接</h2>
     {% if current_user.partner %}
-        <div class="invite-box">
-            <h3>您已绑定成功！</h3>
-            <p>您当前的伴侣是: <strong>{{ current_user.partner.username }}</strong></p>
-        </div>
-
-        <br>
-
-        <div class="invite-box">
-            <h3>📱 消息推送设置</h3>
-            <p>开启后，当 TA 写日记或回答问题时，您会收到浏览器通知。</p>
-            <button id="push-btn" class="btn" style="margin-top:15px;">开启通知</button>
-            <p id="push-status" style="font-size:0.85em;color:#888;margin-top:8px;">
-                {% if current_user.push_subscription %}已开启推送通知{% else %}尚未开启{% endif %}
-            </p>
-        </div>
-
-        <script>
-        function urlBase64ToUint8Array(base64String) {
-            const padding = '='.repeat((4 - base64String.length % 4) % 4);
-            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-            const rawData = window.atob(base64);
-            return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
-        }
-
-        function withTimeout(promise, ms, label) {
-            return Promise.race([
-                promise,
-                new Promise(function(_, reject) {
-                    setTimeout(function() { reject(new Error(label + ' 超时（' + ms/1000 + '秒）')); }, ms);
-                })
-            ]);
-        }
-
-        (function() {
-            var statusEl = document.getElementById('push-status');
-            var btn = document.getElementById('push-btn');
-            if (!statusEl || !btn) return;
-
-            function setStatus(msg) { statusEl.textContent = msg; }
-            function resetBtn() { btn.disabled = false; btn.textContent = '开启通知'; }
-
-            btn.onclick = function() {
-                btn.disabled = true;
-                btn.textContent = '正在开启...';
-
-                (async function() {
-                    try {
-                        // Step 1
-                        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-                            throw new Error('浏览器不支持推送');
-                        }
-
-                        // Step 2: iOS
-                        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-                        var isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                                           window.navigator.standalone === true;
-                        if (isIOS && !isStandalone) {
-                            setStatus('iOS 请先添加到主屏幕再开启');
-                            resetBtn(); return;
-                        }
-
-                        // Step 3: 权限
-                        setStatus('⏳ 步骤1/5: 请求通知权限...');
-                        var permission = await withTimeout(
-                            Notification.requestPermission(), 10000, '请求权限'
-                        );
-                        if (permission !== 'granted') {
-                            setStatus('通知权限未授予');
-                            resetBtn(); return;
-                        }
-
-                        // Step 4: SW ready
-                        setStatus('⏳ 步骤2/5: 等待 Service Worker...');
-                        var reg = await withTimeout(
-                            navigator.serviceWorker.ready, 10000, 'Service Worker 就绪'
-                        );
-
-                        // Step 5: 获取公钥
-                        setStatus('⏳ 步骤3/5: 获取推送密钥...');
-                        var res = await fetch('/push/vapid-public-key');
-                        if (!res.ok) throw new Error('获取公钥失败 (HTTP ' + res.status + ')');
-                        var data = await res.json();
-                        if (!data.publicKey) throw new Error('服务端密钥未配置');
-                        var applicationServerKey = urlBase64ToUint8Array(data.publicKey);
-
-                        // Step 6: 清除旧订阅
-                        setStatus('⏳ 步骤4/5: 清除旧订阅...');
-                        try {
-                            var oldSub = await reg.pushManager.getSubscription();
-                            if (oldSub) await withTimeout(oldSub.unsubscribe(), 5000, '清除旧订阅');
-                        } catch(e) { console.warn('清除旧订阅忽略:', e); }
-
-                        // Step 7: 订阅
-                        setStatus('⏳ 步骤5/5: 注册推送...');
-                        var sub = await withTimeout(
-                            reg.pushManager.subscribe({
-                                userVisibleOnly: true,
-                                applicationServerKey: applicationServerKey
-                            }), 15000, '注册推送'
-                        );
-
-                        // Step 8: 保存
-                        setStatus('⏳ 保存订阅信息...');
-                        var subRes = await fetch('/push/subscribe', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(sub)
-                        });
-
-                        if (subRes.ok) {
-                            setStatus('✅ 推送通知已开启！');
-                            btn.textContent = '重新订阅';
-                        } else {
-                            var errText = await subRes.text();
-                            throw new Error('保存失败: ' + errText);
-                        }
-                    } catch (e) {
-                        setStatus('❌ ' + e.message);
-                        resetBtn();
-                    }
-                })();
-            };
-        })();
-        </script>
-    
-    <!-- 
-      情况二: 您还没有绑定伴侣
-    -->
+        <div class="setting-row"><i data-lucide="heart-handshake"></i><span class="setting-copy"><b>已与 {{ current_user.partner.username }} 连接</b><small>日记、回忆、愿望和问答会在你们之间共享</small></span><span class="status-pill success">已连接</span></div>
     {% else %}
-        
-        <!-- 2a. 生成您自己的邀请码 -->
-        <h3>第一步: 生成您的邀请码</h3>
-        <p>您需要生成一个邀请码，让您的伴侣来兑换。或者，您也可以兑换您伴侣的邀请码。</p>
-        
-        <!-- 如果您已经生成了邀请码 -->
-        {% if current_user.invite_code %}
-            <div class="invite-box">
-                <p>您的专属邀请码是 (请勿泄露给第三人):</p>
-                <!-- 我们在 base.html 中添加一些样式 -->
-                <style>
-                    .invite-box { background: #f0f0f0; border: 1px dashed #ccc; padding: 15px; border-radius: 8px; text-align: center; }
-                    .invite-code { font-size: 2.5em; font-weight: bold; color: #333; letter-spacing: 3px; margin: 10px 0; }
-                </style>
-                <div class="invite-code">{{ current_user.invite_code }}</div>
-                <p style="color: #555;">(您的伴侣登录后, 在同一页面输入此代码即可)</p>
-            </div>
-        
-        <!-- 如果您还没有邀请码 -->
-        {% else %}
-            <form action="{{ url_for('generate_invite_code') }}" method="POST">
-                <button type="submit" class="btn">生成我的邀请码</button>
-            </form>
-        {% endif %}
+        <button class="setting-row setting-button" type="button" data-open-drawer="connectPartner"><i data-lucide="heart-handshake"></i><span class="setting-copy"><b>连接伴侣</b><small>生成自己的邀请码，或输入对方的邀请码</small></span><i data-lucide="chevron-right"></i></button>
+    {% endif %}
+    </section>
 
-        <br>
-        
-        <!-- 2b. 兑换您伴侣的邀请码 -->
-        <h3>第二步: 兑换伴侣的邀请码</h3>
-        <p>如果您伴侣已经生成了邀请码, 请在这里输入:</p>
-        
-        <form action="{{ url_for('redeem_invite_code') }}" method="POST">
-            <div class="form-group">
-                <label for="invite_code">请输入6位邀请码:</label>
-                <input type="text" id="invite_code" name="invite_code" 
-                       style="text-transform: uppercase; letter-spacing: 2px; text-align: center;" 
-                       maxlength="6" required>
-            </div>
-            <button type="submit" class="btn">绑定伴侣</button>
-        </form>
-    
+    {% if current_user.partner %}
+    <section class="settings-group"><h2>提醒</h2><button id="push-btn" class="setting-row setting-button" type="button"><i data-lucide="bell"></i><span class="setting-copy"><b>浏览器通知</b><small id="push-status">{% if current_user.push_subscription %}已开启；需要时可重新订阅{% else %}在对方写日记或回答问题时收到提醒{% endif %}</small></span><span class="status-pill">{% if current_user.push_subscription %}已开启{% else %}去开启{% endif %}</span></button></section>
+
+    <section class="settings-group"><h2>每日问题的 AI 档案</h2>
+        <div class="setting-row"><i data-lucide="shield-check"></i><span class="setting-copy"><b>允许读取我的完整内容</b><small>只有双方都同意后，档案更新才会读取日记、回忆、愿望与回答</small></span><form action="{{ url_for('ai_profile_consent') }}" method="POST"><input type="hidden" name="consent" value="{{ 'no' if current_user.ai_context_consent else 'yes' }}"><button class="status-pill setting-toggle {{ 'success' if current_user.ai_context_consent else '' }}" type="submit">{{ '已同意' if current_user.ai_context_consent else '未同意' }}</button></form></div>
+        <button class="setting-row setting-button" type="button" data-open-drawer="aiProfile"><i data-lucide="file-heart"></i><span class="setting-copy"><b>查看情侣档案摘要</b><small>{% if profile and profile.updated_at %}上次更新：{{ profile.updated_at.strftime('%Y-%m-%d %H:%M') }}{% elif both_consented %}双方已同意，可以生成第一版摘要{% else %}等待双方分别同意{% endif %}</small></span><i data-lucide="chevron-right"></i></button>
+    </section>
     {% endif %}
 
+    <section class="settings-group"><h2>账号</h2><form action="{{ url_for('logout') }}" method="POST"><button class="setting-row setting-button danger-row" type="submit"><i data-lucide="log-out"></i><span class="setting-copy"><b>退出登录</b><small>服务器中已经保存的内容不会受到影响</small></span><i data-lucide="chevron-right"></i></button></form></section>
+</div>
+
+{% if not current_user.partner %}<div class="drawer" data-drawer="connectPartner" hidden><button class="drawer-scrim" type="button" data-close-drawer aria-label="关闭伴侣连接"></button><section class="drawer-paper" role="dialog" aria-modal="true" aria-labelledby="connectTitle"><div class="drawer-handle"></div><header class="drawer-header"><div><span class="eyebrow">JUST FOR TWO</span><h2 id="connectTitle">连接你们的空间</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭"><i data-lucide="x"></i></button></header>{% if current_user.invite_code %}<div class="setting-detail"><p>把这组六位邀请码告诉对方：</p><strong class="invite-code">{{ current_user.invite_code }}</strong><p class="page-subtitle">邀请码只发给你的伴侣。</p></div>{% else %}<form class="setting-detail" action="{{ url_for('generate_invite_code') }}" method="POST"><button class="quiet-action" type="submit"><i data-lucide="key-round"></i>生成我的邀请码</button></form>{% endif %}<div class="form-section"><h2>或者输入对方的邀请码</h2><form action="{{ url_for('redeem_invite_code') }}" method="POST"><div class="field"><label for="invite_code">六位邀请码</label><input class="code-input" id="invite_code" name="invite_code" type="text" maxlength="6" autocomplete="off" required></div><button class="primary-action full-action" type="submit"><i data-lucide="heart-handshake"></i>连接我们</button></form></div></section></div>{% endif %}
+
+{% if current_user.partner %}<div class="drawer" data-drawer="aiProfile" hidden><button class="drawer-scrim" type="button" data-close-drawer aria-label="关闭 AI 档案"></button><section class="drawer-paper" role="dialog" aria-modal="true" aria-labelledby="profileTitle"><div class="drawer-handle"></div><header class="drawer-header"><div><span class="eyebrow">PRIVATE AI PROFILE</span><h2 id="profileTitle">你们的内容摘要</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭"><i data-lucide="x"></i></button></header>{% if profile and profile.summary %}<div class="paper-note sage preserve-lines">{{ profile.summary }}</div>{% else %}<div class="empty-story"><i data-lucide="file-heart"></i><h2>还没有生成档案</h2><p>双方同意后，可以手动整理一次；不会每天自动更新。</p></div>{% endif %}{% if both_consented %}<form action="{{ url_for('refresh_ai_profile') }}" method="POST"><button class="primary-action full-action" type="submit"><i data-lucide="refresh-cw"></i>{{ '重新整理摘要' if profile and profile.summary else '生成档案摘要' }}</button></form>{% else %}<p class="consent-note"><i data-lucide="lock"></i>需要双方分别在自己的设置页同意后才能更新。</p>{% endif %}</section></div>{% endif %}
+
+{% if current_user.partner %}<script>
+(function(){
+  var button=document.getElementById('push-btn'), status=document.getElementById('push-status');
+  if(!button||!status)return;
+  function decodeKey(value){var padding='='.repeat((4-value.length%4)%4);var raw=atob((value+padding).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(Array.from(raw).map(function(c){return c.charCodeAt(0);}));}
+  function timeout(promise,ms,label){return Promise.race([promise,new Promise(function(_,reject){setTimeout(function(){reject(new Error(label+'超时'));},ms);})]);}
+  button.addEventListener('click',function(){
+    button.disabled=true;status.textContent='正在准备通知…';
+    (async function(){try{
+      if(!('serviceWorker'in navigator)||!('PushManager'in window))throw new Error('当前浏览器不支持推送通知');
+      var ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+      var standalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+      if(ios&&!standalone)throw new Error('iPhone 请先将网站添加到主屏幕');
+      var permission=await timeout(Notification.requestPermission(),10000,'请求通知权限');
+      if(permission!=='granted')throw new Error('没有获得通知权限');
+      status.textContent='正在连接推送服务…';
+      var registration=await timeout(navigator.serviceWorker.ready,10000,'等待离线服务');
+      var keyResponse=await fetch('/push/vapid-public-key');if(!keyResponse.ok)throw new Error('无法读取推送密钥');
+      var keyData=await keyResponse.json();if(!keyData.publicKey)throw new Error('服务器尚未配置推送密钥');
+      var old=await registration.pushManager.getSubscription();if(old)await old.unsubscribe();
+      var subscription=await timeout(registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decodeKey(keyData.publicKey)}),15000,'注册推送');
+      var response=await fetch('/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name="csrf-token"]').content},body:JSON.stringify(subscription)});
+      if(!response.ok)throw new Error('保存推送订阅失败');
+      status.textContent='通知已开启；需要时可以再次点击重新订阅';button.querySelector('.status-pill').textContent='已开启';window.showToast&&window.showToast('通知已经开启');
+    }catch(error){status.textContent=error.message;window.showToast&&window.showToast(error.message,'error');}finally{button.disabled=false;}})();
+  });
+})();
+</script>{% endif %}
 {% endblock %}

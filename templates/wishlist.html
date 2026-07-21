@@ -1,94 +1,12 @@
 {% extends "base.html" %}
+{% block title %}愿望纸条 · 我们的小窝{% endblock %}
 {% block content %}
-    <h2>🌠 共享愿望清单</h2>
-    <p>添加您和 <strong>{{ current_user.partner.username if current_user.partner else 'TA' }}</strong> 想一起完成的事情！</p>
+<header class="page-head page-head-row"><div><span class="eyebrow">SOMEDAY, TOGETHER</span><h1 class="page-title">想和你一起做的事</h1><p class="page-subtitle">不赶进度，想到了就写一张，做到了就把它收进下一章。</p></div><button class="primary-action" type="button" data-open-drawer="addWish"><i data-lucide="plus"></i>写一张愿望</button></header>
 
-    <!-- 添加新愿望的表单 -->
-    <form action="{{ url_for('add_wish') }}" method="POST" class="wishlist-form">
-        <div class="form-group" style="flex-grow: 1; margin-bottom: 0;">
-            <input type="text" id="content" name="content" placeholder="例如: 一起去旅行..." required>
-        </div>
-        <button type="submit" class="btn">添加愿望</button>
-    </form>
-    
-    <hr>
+<section aria-labelledby="wishOpenTitle"><div class="chapter-heading"><div><span class="eyebrow">TO BE CONTINUED</span><h2 id="wishOpenTitle">以后要一起</h2></div><span class="hand-label">{{ todo_wishes | length }} 张纸条</span></div>
+{% if todo_wishes %}<div class="wish-stream">{% for item in todo_wishes %}<article class="wish-note" data-reveal><form action="{{ url_for('toggle_wish', item_id=item.id) }}" method="POST"><button class="wish-toggle" type="submit" aria-label="标记为已完成" title="我们做到了"><i data-lucide="circle"></i></button></form><div class="wish-copy"><p>{{ item.content }}</p><small>{{ '我' if item.author_id == current_user.id else 'TA' }} 写下</small></div>{% if item.author_id == current_user.id %}<div class="note-menu question-menu"><button class="icon-button" type="button" data-toggle-menu="wish{{ item.id }}" aria-expanded="false" aria-label="愿望更多操作"><i data-lucide="more-horizontal"></i></button><div id="wish{{ item.id }}" class="question-menu-panel" data-menu-panel hidden><form action="{{ url_for('delete_wish', item_id=item.id) }}" method="POST" onsubmit="return confirm('确定删除这张愿望纸条吗？');"><button class="text-action danger" type="submit"><i data-lucide="trash-2"></i>删除纸条</button></form></div></div>{% endif %}</article>{% endfor %}</div>{% else %}<div class="empty-story"><i data-lucide="sparkles"></i><h2>下一件想一起做的事，会是什么？</h2><p>可以是一场旅行，也可以只是周末一起吃碗面。</p></div>{% endif %}</section>
 
-    <!-- 清单容器 -->
-    <div class="wishlist-container">
-        
-        <!-- 待办列 -->
-        <div class="wishlist-column">
-            <h3>📝 待办清单</h3>
-            <ul class="wishlist">
-                {% for item in todo_wishes %}
-                    <li class="wishlist-item">
-                        <div class="wishlist-item-content">
-                            <!-- 
-                              "完成" 按钮
-                              这是一个表单, 它 POST 到 'toggle_wish' 路由
-                            -->
-                            <form action="{{ url_for('toggle_wish', item_id=item.id) }}" method="POST" style="margin: 0;">
-                                <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 1.5em; margin-right: 5px;" title="标记为已完成">✅</button>
-                            </form>
-                            <span>{{ item.content }}</span>
-                            <!-- 作者标签 -->
-                            {% if item.author_id == current_user.id %}
-                                <span class="author-tag author-me">我</span>
-                            {% else %}
-                                <span class="author-tag author-partner">TA</span>
-                            {% endif %}
-                        </div>
-                        <div class="actions">
-                            <!-- 只有作者才能删除 -->
-                            {% if item.author_id == current_user.id %}
-                                <form action="{{ url_for('delete_wish', item_id=item.id) }}" method="POST" onsubmit="return confirm('您确定要删除这个愿望吗？');">
-                                    <button type="submit" class="btn btn-delete-sm" title="删除">❌</button>
-                                </form>
-                            {% endif %}
-                        </div>
-                    </li>
-                {% else %}
-                    <li>还没有待办的愿望。</li>
-                {% endfor %}
-            </ul>
-        </div>
-        
-        <!-- 已完成列 -->
-        <div class="wishlist-column">
-            <h3>🎉 已完成！</h3>
-            <ul class="wishlist">
-                {% for item in done_wishes %}
-                    <li class="wishlist-item completed">
-                        <div class="wishlist-item-content">
-                            <!-- 
-                              "撤销" 按钮
-                              它和 "完成" 按钮指向同一个 'toggle_wish' 路由
-                            -->
-                            <form action="{{ url_for('toggle_wish', item_id=item.id) }}" method="POST" style="margin: 0;">
-                                <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 1.5em; margin-right: 5px;" title="标记为未完成">⏪</button>
-                            </form>
-                            <span>{{ item.content }}</span>
-                            <!-- 作者标签 -->
-                            {% if item.author_id == current_user.id %}
-                                <span class="author-tag author-me">我</span>
-                            {% else %}
-                                <span class="author-tag author-partner">TA</span>
-                            {% endif %}
-                        </div>
-                        <div class="actions">
-                            <!-- 只有作者才能删除 -->
-                            {% if item.author_id == current_user.id %}
-                                <form action="{{ url_for('delete_wish', item_id=item.id) }}" method="POST" onsubmit="return confirm('您确定要删除这个愿望吗？');">
-                                    <button type="submit" class="btn btn-delete-sm" title="删除">❌</button>
-                                </form>
-                            {% endif %}
-                        </div>
-                    </li>
-                {% else %}
-                    <li>还没有已完成的愿望。</li>
-                {% endfor %}
-            </ul>
-        </div>
-        
-    </div>
+{% if done_wishes %}<section class="completed-chapter" aria-labelledby="wishDoneTitle"><div class="chapter-heading"><div><span class="eyebrow">WE DID IT</span><h2 id="wishDoneTitle">已经一起做到的事</h2></div><span class="hand-label">{{ done_wishes | length }} 件</span></div><div class="wish-stream">{% for item in done_wishes %}<article class="wish-note completed"><form action="{{ url_for('toggle_wish', item_id=item.id) }}" method="POST"><button class="wish-toggle" type="submit" aria-label="恢复为未完成" title="放回愿望章节"><i data-lucide="check"></i></button></form><div class="wish-copy"><p>{{ item.content }}</p><small>{{ '我' if item.author_id == current_user.id else 'TA' }} 写下</small></div>{% if item.author_id == current_user.id %}<div class="note-menu question-menu"><button class="icon-button" type="button" data-toggle-menu="doneWish{{ item.id }}" aria-expanded="false" aria-label="愿望更多操作"><i data-lucide="more-horizontal"></i></button><div id="doneWish{{ item.id }}" class="question-menu-panel" data-menu-panel hidden><form action="{{ url_for('delete_wish', item_id=item.id) }}" method="POST" onsubmit="return confirm('确定删除这张愿望纸条吗？');"><button class="text-action danger" type="submit"><i data-lucide="trash-2"></i>删除纸条</button></form></div></div>{% endif %}</article>{% endfor %}</div></section>{% endif %}
+
+<div class="drawer" data-drawer="addWish" hidden><button class="drawer-scrim" type="button" data-close-drawer aria-label="关闭新增愿望"></button><section class="drawer-paper" role="dialog" aria-modal="true" aria-labelledby="wishDrawerTitle"><div class="drawer-handle"></div><header class="drawer-header"><div><span class="eyebrow">A LITTLE WISH</span><h2 id="wishDrawerTitle">写一张愿望纸条</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭"><i data-lucide="x"></i></button></header><form action="{{ url_for('add_wish') }}" method="POST"><div class="field"><label for="content">以后想一起做什么？</label><input id="content" name="content" type="text" maxlength="300" placeholder="例如：找个晴天去郊外走走" required></div><button class="primary-action full-action" type="submit"><i data-lucide="bookmark-plus"></i>把它贴上去</button></form></section></div>
 {% endblock %}

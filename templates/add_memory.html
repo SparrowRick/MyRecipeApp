@@ -1,46 +1,13 @@
 {% extends "base.html" %}
+{% block title %}写一段回忆 · 我们的小窝{% endblock %}
 {% block content %}
-    <h2>+ 添加新回忆</h2>
-    
-    <!-- 
-      这个表单和 add_recipe.html 几乎一样
-      注意: 必须加 enctype="multipart/form-data" 来上传图片
-    -->
-    <form action="{{ url_for('add_memory') }}" method="POST" enctype="multipart/form-data">
-        <div class="form-group">
-            <label for="title">回忆标题:</label>
-            <input type="text" id="title" name="title" placeholder="例如: 第一次旅行" required>
-        </div>
-        
-        <div class="form-group">
-            <label for="image">上传照片 (可选):</label>
-            <!-- 
-              注意: 这里的 name="image" 必须和 app.py 中 
-              request.files['image'] 匹配
-            -->
-            <input type="file" id="image" name="image" accept="image/png, image/jpeg, image/gif">
-        </div>
-        
-        <div style="display: flex; gap: 20px;">
-            <div class="form-group" style="flex: 1;">
-                <label for="memory_date">日期 (可选):</label>
-                <!-- 
-                  HTML 的 type="date" 会提供一个日期选择器
-                  它会以 YYYY-MM-DD 的格式提交
-                -->
-                <input type="date" id="memory_date" name="memory_date">
-            </div>
-            <div class="form-group" style="flex: 1;">
-                <label for="location">地点 (可选):</label>
-                <input type="text" id="location" name="location" placeholder="例如: 海边">
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label for="content">回忆故事:</label>
-            <textarea id="content" name="content" rows="10" placeholder="那天发生了什么..." required></textarea>
-        </div>
-        
-        <button type="submit" class="btn">保存回忆</button>
+<div class="form-page">
+    <header class="page-head"><span class="eyebrow">NEW MEMORY</span><h1 class="page-title">写下一段回忆</h1><p class="page-subtitle">照片可以以后再补，先把当时的心情留下来。</p></header>
+    <form class="paper-sheet form-paper" action="{{ url_for('add_memory') }}" method="POST" enctype="multipart/form-data">
+        <section class="form-section"><h2>给它一个名字</h2><p>像给书页写标题，简单的一句话就好。</p><div class="field"><label for="title">回忆标题</label><input id="title" name="title" type="text" placeholder="例如：那晚一起散步到很晚" maxlength="150" required></div></section>
+        <section class="form-section"><h2>把时间和地点夹进来</h2><div class="field-grid"><div class="field"><label for="memory_date">日期</label><input id="memory_date" name="memory_date" type="date"></div><div class="field"><label for="location">地点</label><input id="location" name="location" type="text" placeholder="例如：海边" maxlength="100"></div></div><div class="field"><label for="image">一张照片（可选）</label><input id="image" name="image" type="file" accept="image/png,image/jpeg,image/gif"><small>照片只会作为纪念册里的小纸片出现。</small></div></section>
+        <section class="form-section"><h2>那天发生了什么</h2><div class="field"><label for="content">回忆正文</label><textarea id="content" name="content" rows="11" placeholder="不必写得完整，从最想记住的那个瞬间开始。" required></textarea></div></section>
+        <div class="form-actions"><a class="text-action" href="{{ url_for('memories') }}">先不写了</a><button class="primary-action" type="submit"><i data-lucide="bookmark-check"></i>收进纪念册</button></div>
     </form>
+</div>
 {% endblock %}

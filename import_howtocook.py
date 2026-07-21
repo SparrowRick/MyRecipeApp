@@ -3,6 +3,7 @@ import glob
 import re
 import subprocess
 import shutil
+import secrets
 from app import app, db, User, Recipe, Ingredient
 
 REPO_URL = "https://github.com/Anduin2017/HowToCook.git"
@@ -15,7 +16,8 @@ def setup_user():
         if not user:
             print(f"创建系统账号: {SYSTEM_USERNAME}")
             user = User(username=SYSTEM_USERNAME)
-            user.set_password("system_random_password_12345!")
+            # The system recipe owner must never have a known, reusable login password.
+            user.set_password(secrets.token_urlsafe(48))
             db.session.add(user)
             db.session.commit()
         return user.id

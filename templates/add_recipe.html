@@ -1,83 +1,11 @@
 {% extends "base.html" %}
+{% block title %}记一道菜 · 家庭食谱{% endblock %}
 {% block content %}
-    <h2>添加新菜谱</h2>
-    
-    <form action="{{ url_for('add_recipe') }}" method="POST" enctype="multipart/form-data">
-        <div class="form-group">
-            <label for="recipe_name">菜谱名称:</label>
-            <input type="text" id="recipe_name" name="recipe_name" required>
-        </div>
-
-        <div class="form-group">
-            <label for="category">分类 (可选):</label>
-            <input type="text" id="category" name="category" placeholder="例如：荤菜、素菜、汤类">
-        </div>
-        
-        <div class="form-group">
-            <label for="recipe_image">上传图片 (可选):</label>
-            <input type="file" id="recipe_image" name="recipe_image" accept="image/png, image/jpeg, image/gif">
-        </div>
-
-        <div class="form-group">
-            <label>所需食材:</label>
-            <div id="ingredients_list">
-                <div class="ingredient-item">
-                    <input type="text" name="ingredient_name[]" placeholder="食材名称 (如: 鸡蛋)">
-                    <input type="text" name="ingredient_qty[]" placeholder="用量 (如: 2个)">
-                </div>
-            </div>
-            <button type="button" onclick="addIngredient()">+ 添加食材</button>
-        </div>
-
-        <div class="form-group">
-            <label>所需调料:</label>
-            <div id="seasonings_list">
-                <div class="seasoning-item">
-                    <input type="text" name="seasoning_name[]" placeholder="调料名称 (如: 盐)">
-                    <input type="text" name="seasoning_qty[]" placeholder="用量 (如: 1勺)">
-                </div>
-            </div>
-            <button type="button" onclick="addSeasoning()">+ 添加调料</button>
-        </div>
-
-        <div class="form-group">
-            <label for="instructions">制作步骤:</label>
-            <textarea id="instructions" name="instructions" rows="10"></textarea>
-        </div>
-        
-        <button type="submit" class="btn">保存菜谱</button>
-    </form>
-
-    <script>
-    // 添加食材
-    function addIngredient() {
-        var list = document.getElementById('ingredients_list');
-        var newItem = document.createElement('div');
-        newItem.classList.add('ingredient-item');
-        newItem.innerHTML = `
-            <input type="text" name="ingredient_name[]" placeholder="食材名称">
-            <input type="text" name="ingredient_qty[]" placeholder="用量">
-            <button type="button" onclick="removeItem(this)">移除</button>
-        `;
-        list.appendChild(newItem);
-    }
-    
-    // 添加调料
-    function addSeasoning() {
-        var list = document.getElementById('seasonings_list');
-        var newItem = document.createElement('div');
-        newItem.classList.add('seasoning-item');
-        newItem.innerHTML = `
-            <input type="text" name="seasoning_name[]" placeholder="调料名称">
-            <input type="text" name="seasoning_qty[]" placeholder="用量">
-            <button type="button" onclick="removeItem(this)">移除</button>
-        `;
-        list.appendChild(newItem);
-    }
-
-    // 通用的移除功能
-    function removeItem(button) {
-        button.parentElement.remove();
-    }
-    </script>
+<div class="form-page"><header class="page-head"><span class="eyebrow">NEW RECIPE</span><h1 class="page-title">记一道家里的味道</h1><p class="page-subtitle">先写最重要的部分，食材和调料可以随时继续补。</p></header>
+<form class="paper-sheet form-paper" action="{{ url_for('add_recipe') }}" method="POST" enctype="multipart/form-data">
+    <section class="form-section"><h2>这道菜叫什么</h2><div class="field-grid"><div class="field"><label for="recipe_name">菜名</label><input id="recipe_name" name="recipe_name" type="text" required></div><div class="field"><label for="category">书签分类</label><input id="category" name="category" type="text" placeholder="例如：家常菜、汤、甜点"></div></div><div class="field"><label for="recipe_image">成品照片（可选）</label><input id="recipe_image" name="recipe_image" type="file" accept="image/png,image/jpeg,image/gif"></div></section>
+    <section class="form-section"><h2>准备些什么</h2><p>先写常用的几样，需要时再继续添加。</p><div class="ingredient-columns"><div><div class="chapter-heading"><b>食材</b><button class="text-action" type="button" onclick="addIngredient()"><i data-lucide="plus"></i>再加一项</button></div><div id="ingredients-container" class="dynamic-list"><div class="dynamic-row ingredient-item"><input name="ingredient_name[]" type="text" placeholder="食材名称"><input name="ingredient_qty[]" type="text" placeholder="用量"><button class="icon-button" type="button" onclick="removeItem(this)" aria-label="移除此项"><i data-lucide="x"></i></button></div></div></div><div><div class="chapter-heading"><b>调料</b><button class="text-action" type="button" onclick="addSeasoning()"><i data-lucide="plus"></i>再加一项</button></div><div id="seasonings-container" class="dynamic-list"><div class="dynamic-row seasoning-item"><input name="seasoning_name[]" type="text" placeholder="调料名称"><input name="seasoning_qty[]" type="text" placeholder="用量"><button class="icon-button" type="button" onclick="removeItem(this)" aria-label="移除此项"><i data-lucide="x"></i></button></div></div></div></div></section>
+    <section class="form-section"><h2>做法写在这里</h2><div class="field"><label for="instructions">制作步骤</label><textarea id="instructions" name="instructions" rows="12" placeholder="可以分步骤写，也可以像家常笔记一样自然记录。"></textarea><small>支持简单的 Markdown 排版。</small></div></section>
+    <div class="form-actions"><a class="text-action" href="{{ url_for('recipes_list') }}">先不记了</a><button class="primary-action" type="submit"><i data-lucide="bookmark-check"></i>收进食谱册</button></div>
+</form></div>
 {% endblock %}

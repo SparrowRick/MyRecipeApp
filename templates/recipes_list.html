@@ -1,120 +1,15 @@
 {% extends "base.html" %}
+{% block title %}家庭食谱 · 我们的小窝{% endblock %}
 {% block content %}
-
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">共享菜谱</h1>
-        <a href="{{ url_for('add_recipe') }}" class="bg-rose-500 text-white px-4 py-2 rounded-lg shadow-md hover:bg-rose-600 transition-all flex items-center">
-            <i data-lucide="plus" class="w-5 h-5 mr-1"></i> 添加新菜谱
-        </a>
-    </div>
-
-    <!-- 切换标签 -->
-    <div class="flex gap-2 mb-4">
-        <button onclick="switchTab('category')" id="tab-category" class="px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-rose-500 text-white">
-            <i data-lucide="tag" class="w-4 h-4 inline mr-1"></i>按种类
-        </button>
-        <button onclick="switchTab('author')" id="tab-author" class="px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-gray-100 text-gray-600 hover:bg-gray-200">
-            <i data-lucide="user" class="w-4 h-4 inline mr-1"></i>按添加人
-        </button>
-    </div>
-
-    <!-- 按种类分组 -->
-    <div id="panel-category">
-    {% if grouped %}
-        {% for category, recipes in grouped.items() | sort %}
-        <details class="bg-white rounded-xl shadow-lg mb-4" open>
-            <summary class="px-6 py-4 cursor-pointer font-bold text-gray-700 text-lg flex items-center justify-between">
-                <span>{{ category }} <span class="text-sm font-normal text-gray-400">({{ recipes | length }})</span></span>
-                <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400"></i>
-            </summary>
-            <ul class="divide-y divide-gray-200 px-6 pb-2">
-                {% for recipe in recipes %}
-                <li class="py-4 flex justify-between items-center">
-                    <div>
-                        <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}" class="text-lg font-semibold text-gray-800 hover:text-rose-500">
-                            {{ recipe.name }}
-                        </a>
-                        <p class="text-sm text-gray-500">(由
-                            {% if recipe.user_id == current_user.id %}
-                                <strong style="color: #007BFF;">我</strong>
-                            {% else %}
-                                <strong style="color: #28a745;">{{ recipe.author.username }}</strong>
-                            {% endif %}
-                        添加)</p>
-                    </div>
-                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
-                </li>
-                {% endfor %}
-            </ul>
-        </details>
-        {% endfor %}
-    {% else %}
-        <div class="bg-white rounded-xl shadow-lg p-6 text-center text-gray-500">
-            您和您的伴侣还没有添加任何菜谱。
-        </div>
-    {% endif %}
-    </div>
-
-    <!-- 按添加人分组 -->
-    <div id="panel-author" style="display:none;">
-    {% if grouped_by_author %}
-        {% for author, recipes in grouped_by_author.items() %}
-        <details class="bg-white rounded-xl shadow-lg mb-4" open>
-            <summary class="px-6 py-4 cursor-pointer font-bold text-gray-700 text-lg flex items-center justify-between">
-                <span>
-                    {% if author == '我' %}
-                        <span style="color: #3b82f6;">{{ author }}</span>
-                    {% else %}
-                        {{ author }}
-                    {% endif %}
-                    <span class="text-sm font-normal text-gray-400">({{ recipes | length }})</span>
-                </span>
-                <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400"></i>
-            </summary>
-            <ul class="divide-y divide-gray-200 px-6 pb-2">
-                {% for recipe in recipes %}
-                <li class="py-4 flex justify-between items-center">
-                    <div>
-                        <a href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}" class="text-lg font-semibold text-gray-800 hover:text-rose-500">
-                            {{ recipe.name }}
-                        </a>
-                        <p class="text-sm text-gray-400">{{ recipe.category or '未分类' }}</p>
-                    </div>
-                    <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400"></i>
-                </li>
-                {% endfor %}
-            </ul>
-        </details>
-        {% endfor %}
-    {% else %}
-        <div class="bg-white rounded-xl shadow-lg p-6 text-center text-gray-500">
-            您和您的伴侣还没有添加任何菜谱。
-        </div>
-    {% endif %}
-    </div>
-
-    <script>
-        function switchTab(tab) {
-            var catPanel = document.getElementById('panel-category');
-            var authPanel = document.getElementById('panel-author');
-            var catBtn = document.getElementById('tab-category');
-            var authBtn = document.getElementById('tab-author');
-
-            if (tab === 'category') {
-                catPanel.style.display = 'block';
-                authPanel.style.display = 'none';
-                catBtn.className = 'px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-rose-500 text-white';
-                authBtn.className = 'px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-gray-100 text-gray-600 hover:bg-gray-200';
-            } else {
-                catPanel.style.display = 'none';
-                authPanel.style.display = 'block';
-                authBtn.className = 'px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-rose-500 text-white';
-                catBtn.className = 'px-4 py-2 rounded-lg font-semibold text-sm transition-all bg-gray-100 text-gray-600 hover:bg-gray-200';
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-        });
-    </script>
+<header class="page-head page-head-row"><div><span class="eyebrow">OUR COOKBOOK</span><h1 class="page-title">家里的味道</h1><p class="page-subtitle">做过的、喜欢的，还有下次想试试的，都收在这本食谱里。</p></div><a class="primary-action" href="{{ url_for('add_recipe') }}"><i data-lucide="plus"></i>记一道菜</a></header>
+<div data-tabs>
+    <div class="bookmark-tabs" role="tablist" aria-label="食谱索引方式"><button class="bookmark-tab active" type="button" data-tab-target="category" role="tab">按种类</button><button class="bookmark-tab" type="button" data-tab-target="author" role="tab">按添加人</button></div>
+    <section class="paper-sheet recipe-index" data-tab-panel="category">
+    {% if grouped %}{% for category, recipes in grouped.items() | sort %}<div class="recipe-group"><h2>{{ category }} <span class="hand-label">{{ recipes | length }} 道</span></h2><div class="recipe-list">{% for recipe in recipes %}<a class="recipe-link" href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}"><span><b>{{ recipe.name }}</b><small>{{ '我' if recipe.user_id == current_user.id else recipe.author.username }} 收录{% if recipe.ingredients %} · {{ recipe.ingredients[:3] | map(attribute='name') | join('、') }}{% endif %}</small></span><i data-lucide="arrow-up-right"></i></a>{% endfor %}</div></div>{% endfor %}{% else %}<div class="empty-story"><i data-lucide="cooking-pot"></i><h2>食谱册还是空白的</h2><p>先记下那道你们最常做的菜。</p><a class="primary-action" href="{{ url_for('add_recipe') }}">记第一道菜</a></div>{% endif %}
+    </section>
+    <section class="paper-sheet recipe-index" data-tab-panel="author" hidden>
+    {% if grouped_by_author %}{% for author, recipes in grouped_by_author.items() %}<div class="recipe-group"><h2>{{ author }} 的书签 <span class="hand-label">{{ recipes | length }} 道</span></h2><div class="recipe-list">{% for recipe in recipes %}<a class="recipe-link" href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}"><span><b>{{ recipe.name }}</b><small>{{ recipe.category or '未分类' }}</small></span><i data-lucide="arrow-up-right"></i></a>{% endfor %}</div></div>{% endfor %}{% else %}<div class="empty-story"><p>还没有收录菜谱。</p></div>{% endif %}
+    </section>
+</div>
+<p class="utility-links"><a href="{{ url_for('what_can_i_make') }}"><i data-lucide="search"></i>按现有食材找菜谱</a><a href="{{ url_for('ai_menu') }}"><i data-lucide="utensils"></i>安排今晚的菜单</a></p>
 {% endblock %}

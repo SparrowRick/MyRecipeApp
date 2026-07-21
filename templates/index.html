@@ -1,188 +1,118 @@
 {% extends "base.html" %}
+{% block title %}今日手账 · 我们的小窝{% endblock %}
 {% block content %}
-    
-    <!-- 1. “在一起” 计数器 (保持不变) -->
-    <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg text-center">
-        <h1 class="text-3xl md:text-4xl font-bold text-rose-600">
-            我们在一起的第 <span id="anniversary-days" class="text-rose-400">...</span> 天
-        </h1>
-        <p class="text-gray-600 mt-2">接下来的日子也要一起走过！</p>
+<section class="today-cover" data-reveal>
+    <div>
+        <span class="today-date">{{ today_label }}</span>
+        <h1>我们在一起的<br>第 {{ anniversary_days }} 天</h1>
+        <p>今天也不必发生什么大事。能在这里留下一句话，就已经是共同生活的一部分。</p>
     </div>
+</section>
 
-    <!-- NEW: 冰箱贴 (倒数日/纪念日) -->
-    <div class="mt-8 bg-yellow-50 rounded-xl shadow border border-yellow-200 p-6 relative overflow-hidden">
-        <!-- 装饰图案 -->
-        <div class="absolute -top-4 -right-4 opacity-10 pointer-events-none">
-            <i data-lucide="snowflake" class="w-32 h-32 text-yellow-900"></i>
-        </div>
-        
-        <div class="flex justify-between items-center mb-4 relative z-10">
-            <h2 class="text-xl font-bold flex items-center text-yellow-800">
-                <i data-lucide="sticker" class="w-5 h-5 mr-2"></i>冰箱贴 (纪念与期待)
-            </h2>
-            <button onclick="document.getElementById('addFridgeModal').style.display='block'" class="text-sm bg-white hover:bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-full shadow-sm border border-yellow-300 font-medium transition-colors">
-                + 贴一张
-            </button>
-        </div>
-        
+<section class="chapter" data-reveal>
+    <a class="question-hero torn-paper" href="{{ url_for('daily_question') }}">
+        <span class="tape top" aria-hidden="true"></span>
+        <div class="question-hero-top"><span class="eyebrow">TODAY'S LETTER</span><i data-lucide="message-circle-heart" aria-hidden="true"></i></div>
+        {% if active_question %}
+            <blockquote>{{ active_question.content }}</blockquote>
+            <footer>打开今天的信笺 <i data-lucide="arrow-right"></i></footer>
+        {% else %}
+            <blockquote>今天，想和对方认真聊一件什么小事？</blockquote>
+            <footer>抽取一张新问题 <i data-lucide="arrow-right"></i></footer>
+        {% endif %}
+    </a>
+</section>
+
+<section class="chapter" data-reveal>
+    <div class="chapter-heading"><div><span class="eyebrow">HOW WE FEEL</span><h2>今天的我们</h2></div><button class="text-action" type="button" data-open-drawer="checkin"><i data-lucide="pencil-line"></i>留下状态</button></div>
+    <div class="signature-notes">
+        {% for person in [current_user, current_user.partner] if person %}
+        {% set checkin = check_in_map.get(person.id) %}
+        <button class="signature-note paper-note {{ 'sage' if person.id != current_user.id else '' }}" type="button" {% if person.id == current_user.id %}data-open-drawer="checkin"{% else %}disabled{% endif %}>
+            <strong>{{ '我' if person.id == current_user.id else person.username }}</strong>
+            {% if checkin %}<span>{{ checkin.mood }}，{{ checkin.energy }}。现在{{ checkin.need }}。</span>{% else %}<span>{{ '点这里，留下一枚今天的心情签' if person.id == current_user.id else 'TA 今天还没有留下心情签' }}</span>{% endif %}
+        </button>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="chapter" data-reveal>
+    <div class="chapter-heading"><div><span class="eyebrow">ON THE FRIDGE</span><h2>冰箱贴</h2></div><button class="text-action" type="button" data-open-drawer="fridge"><i data-lucide="plus"></i>贴一张</button></div>
+    <div class="fridge-board">
         {% if fridge_data %}
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {% for item in fridge_data %}
-            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 {{ 'border-rose-400' if item.type == 'anniversary' else 'border-blue-400' }} relative group transform transition hover:-translate-y-1">
-                <!-- 图钉装饰 -->
-                <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 w-4 h-4 rounded-full shadow-sm {{ 'bg-rose-500' if item.type == 'anniversary' else 'bg-blue-500' }}"></div>
-                
-                <form action="{{ url_for('delete_fridge_item', item_id=item.id) }}" method="POST" class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button type="submit" class="text-red-400 hover:text-red-600" title="删除" onclick="return confirm('确定撕掉这张冰箱贴吗？')">
-                        <i data-lucide="x" class="w-4 h-4"></i>
-                    </button>
-                </form>
-                
-                <h3 class="text-sm font-semibold text-gray-700 mb-2 truncate" title="{{ item.title }}">{{ item.title }}</h3>
-                <div class="text-2xl font-bold {{ 'text-rose-500' if item.type == 'anniversary' else 'text-blue-500' }} text-center my-2">
-                    {% if item.is_past %}
-                        <span class="text-sm font-normal text-gray-500">已过</span> {{ item.diff_days }} <span class="text-sm font-normal text-gray-500">天</span>
-                    {% else %}
-                        <span class="text-sm font-normal text-gray-500">还有</span> {{ item.diff_days }} <span class="text-sm font-normal text-gray-500">天</span>
-                    {% endif %}
+        <div class="sticky-list">
+            {% for item in fridge_data[:6] %}
+            <article class="sticky-note">
+                <div class="note-menu">
+                    <button class="icon-button" type="button" data-toggle-menu="fridgeMenu{{ item.id }}" aria-expanded="false" aria-label="{{ item.title }}的更多操作"><i data-lucide="more-horizontal"></i></button>
+                    <div id="fridgeMenu{{ item.id }}" class="question-menu-panel" data-menu-panel hidden>
+                        <form action="{{ url_for('delete_fridge_item', item_id=item.id) }}" method="POST" onsubmit="return confirm('确定撕掉这张冰箱贴吗？')"><button class="text-action danger" type="submit"><i data-lucide="trash-2"></i>撕掉这张</button></form>
+                    </div>
                 </div>
-                <div class="text-xs text-center text-gray-400">
-                    {{ item.target_date }} 
-                </div>
-            </div>
+                <h3>{{ item.title }}</h3>
+                <div><b>{{ '已经' if item.is_past else '还有' }} {{ item.diff_days }} 天</b><small>{{ item.target_date }}</small></div>
+            </article>
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-center py-6 text-yellow-700 opacity-60 border-2 border-dashed border-yellow-200 rounded-lg">
-            冰箱上空空的，快去贴上你们的重要日子吧！
-        </div>
+        <div class="empty-story"><i data-lucide="sticky-note"></i><h2>冰箱上还空着</h2><p>把一个想记住的日子贴在这里，往后每次经过都能看见。</p><button class="quiet-action" type="button" data-open-drawer="fridge">贴下第一个日子</button></div>
         {% endif %}
     </div>
+</section>
 
-    <!-- 新增冰箱贴 Modal -->
-    <div id="addFridgeModal" class="modal">
-        <div class="modal-content border-t-4 border-yellow-400">
-            <span class="modal-close" onclick="document.getElementById('addFridgeModal').style.display='none'">&times;</span>
-            <h3 class="mb-4 text-xl font-bold flex items-center text-yellow-800">
-                <i data-lucide="sticker" class="w-5 h-5 mr-2"></i>新增重要日子
-            </h3>
-            <form action="{{ url_for('add_fridge_item') }}" method="POST">
-                <div class="form-group">
-                    <label>这是什么日子？</label>
-                    <input type="text" name="title" required placeholder="例如：恋爱一周年、一起去三亚...">
-                </div>
-                <div class="form-group grid grid-cols-2 gap-4">
-                    <div>
-                        <label>日期</label>
-                        <input type="date" name="target_date" required>
-                    </div>
-                    <div>
-                        <label>类型</label>
-                        <select name="item_type" required class="w-full p-2 border border-gray-300 rounded-md">
-                            <option value="anniversary">纪念日 (已发生)</option>
-                            <option value="countdown">倒数日 (未发生)</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="mt-6 flex justify-end">
-                    <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg shadow font-medium">贴上冰箱</button>
-                </div>
-            </form>
-        </div>
-    </div>
+{% if on_this_day %}
+<section class="chapter" data-reveal>
+    <div class="chapter-heading"><div><span class="eyebrow">ON THIS DAY</span><h2>那年今天</h2></div><a class="text-action" href="{{ url_for('memories') }}">翻看更多</a></div>
+    <a class="memory-glimpse paper-sheet" href="{{ url_for('memory_detail', memory_id=on_this_day.id) }}">
+        <div><span class="hand-label">{{ on_this_day.memory_date.strftime('%Y年%m月%d日') }}</span><h3>{{ on_this_day.title }}</h3><p>{{ on_this_day.content[:120] }}{% if on_this_day.content|length > 120 %}…{% endif %}</p></div>
+        <span class="stamp">MEMORY<br>留存</span>
+    </a>
+</section>
+{% endif %}
 
-    <!-- 2. 快捷入口 -->
-    <!-- FIX: 调整为 flex 自动换行或者更宽松的 grid -->
-    <div class="flex flex-wrap gap-4 mt-8 justify-center sm:justify-between">
-        
-        <a href="{{ url_for('memories') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
-            <i data-lucide="gallery-thumbnails" class="w-10 h-10"></i>
-            <span>纪念册</span>
-        </a>
-        
-        <a href="{{ url_for('wishlist') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
-            <i data-lucide="list-checks" class="w-10 h-10"></i>
-            <span>愿望清单</span>
-        </a>
-        
-        <a href="{{ url_for('journal') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
-            <i data-lucide="book-heart" class="w-10 h-10"></i>
-            <span>共享日记</span>
-        </a>
-        
-        <a href="{{ url_for('recipes_list') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
-            <i data-lucide="utensils-crossed" class="w-10 h-10"></i>
-            <span>共享菜谱</span>
-        </a>
-        
-        <!-- NEW: 每日一问卡片 -->
-        <a href="{{ url_for('daily_question') }}" class="shortcut-card flex-1 min-w-[120px] max-w-[180px]">
-            <i data-lucide="message-circle-question" class="w-10 h-10"></i>
-            <span>每日一问</span>
-        </a>
-        
-        <style>
-            .shortcut-card {
-                display: flex; flex-direction: column; align-items: center; justify-content: center;
-                padding: 16px; background-color: white; border-radius: 12px;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-weight: 600;
-                color: #be185d; transition: all 0.2s; text-decoration: none;
-            }
-            .shortcut-card:hover {
-                transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.08);
-                background-color: #fff1f2;
-            }
-            .shortcut-card i { margin-bottom: 8px; }
-        </style>
-    </div>
-
-    <!-- 3. 最近动态 (保持不变) -->
-    <div class="mt-8">
-        <h2 class="text-2xl font-bold mb-4">最近动态</h2>
-        <div class="bg-white rounded-xl shadow-lg p-6 space-y-4">
-            
-            {% for activity in activities %}
-                <div class="border-l-4 pl-4 
-                    {% if activity.type == 'recipe' %} border-rose-400 
-                    {% elif activity.type == 'memory' %} border-blue-400 
-                    {% elif activity.type == 'wishlist' %} border-purple-400 
-                    {% elif activity.type == 'journal' %} border-yellow-400 
-                    {% else %} border-gray-400 {% endif %}">
-                    
-                    <p class="font-semibold">{{ activity.text }}</p>
-                    <span class="text-sm text-gray-500">
-                        {% if activity.type == 'wishlist' %}
-                            愿望清单更新
-                        {% elif activity.type == 'journal' %}
-                            日记更新
-                        {% else %}
-                            近期更新
-                        {% endif %}
-                    </span>
-                </div>
-            
+<section class="chapter collage-grid" data-reveal>
+    <div>
+        <div class="chapter-heading"><div><span class="eyebrow">THIS WEEK</span><h2>这周一起做</h2></div><a class="text-action" href="{{ url_for('weekly_reflection') }}">本周小结</a></div>
+        <div class="paper-note rose">
+            {% if weekly_task %}
+                <p class="hand-label">本周的小约定</p><h3>{{ weekly_task.title }}</h3><p class="chapter-note">{{ {'open':'还等着我们','completed':'我们做到了','skipped':'这周先放一放'}.get(weekly_task.status, weekly_task.status) }}</p>
+                {% if weekly_task.status == 'open' %}<div class="form-actions"><form action="{{ url_for('update_weekly_task', task_id=weekly_task.id, action='skip') }}" method="POST"><button class="text-action" type="submit">这周先放下</button></form><form action="{{ url_for('update_weekly_task', task_id=weekly_task.id, action='complete') }}" method="POST"><button class="quiet-action" type="submit"><i data-lucide="check"></i>我们做到了</button></form></div>{% endif %}
             {% else %}
-                <div class="text-center text-gray-500 py-4">
-                    <p>还没有动态，快去添加第一个内容吧！</p>
-                </div>
-            {% endfor %}
-            
+                <p class="hand-label">本周还没有小约定</p><p>选一件十分钟也能完成的小事，让普通的一周留下一个共同片段。</p><form action="{{ url_for('create_weekly_task') }}" method="POST"><button class="quiet-action" type="submit"><i data-lucide="sparkles"></i>抽一件小事</button></form>
+            {% endif %}
         </div>
     </div>
+    <div>
+        <div class="chapter-heading"><div><span class="eyebrow">RECENT NOTES</span><h2>最近留下的</h2></div></div>
+        <div class="story-thread">
+            {% for activity in activities[:5] %}<div class="story-entry"><p>{{ activity.text }}</p><time>{{ activity.time.strftime('%m月%d日') if activity.time else '最近' }}</time></div>
+            {% else %}<div class="empty-story"><i data-lucide="book-heart"></i><h2>故事正从这里开始</h2><p>写下一篇日记、一段回忆，或一道属于你们的菜。</p></div>{% endfor %}
+        </div>
+    </div>
+</section>
 
-    <!-- 4. 计数器 JS (保持不变) -->
-    <script>
-        function updateAnniversaryCounter() {
-            const startDate = new Date('2024-05-01T00:00:00'); 
-            const today = new Date();
-            const diffTime = Math.abs(today - startDate);
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; 
-            const daysElement = document.getElementById('anniversary-days');
-            if (daysElement) { daysElement.textContent = diffDays; }
-        }
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof lucide !== 'undefined') { lucide.createIcons(); }
-            updateAnniversaryCounter();
-        });
-    </script>
+<div class="drawer" data-drawer="checkin" hidden>
+    <button class="drawer-scrim" type="button" data-close-drawer aria-label="关闭状态填写"></button>
+    <section class="drawer-paper" role="dialog" aria-modal="true" aria-labelledby="checkinTitle">
+        <div class="drawer-handle"></div><header class="drawer-header"><div><span class="eyebrow">A SMALL SIGN</span><h2 id="checkinTitle">留下一枚今天的心情签</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭"><i data-lucide="x"></i></button></header>
+        <form action="{{ url_for('daily_check_in') }}" method="POST">
+            <div class="field"><label for="mood">此刻的心情</label><select id="mood" name="mood">{% for value in ['开心','平静','低落','焦虑','疲惫'] %}<option>{{ value }}</option>{% endfor %}</select></div>
+            <div class="field"><label for="energy">今天的精力</label><select id="energy" name="energy">{% for value in ['充足','一般','很低'] %}<option>{{ value }}</option>{% endfor %}</select></div>
+            <div class="field"><label for="need">想让对方知道</label><select id="need" name="need">{% for value in ['想聊聊','想抱抱','需要陪伴','想安静一下','一切都好'] %}<option>{{ value }}</option>{% endfor %}</select></div>
+            <button class="primary-action full" type="submit"><i data-lucide="bookmark"></i>夹进今天这一页</button>
+        </form>
+    </section>
+</div>
+
+<div class="drawer" data-drawer="fridge" hidden>
+    <button class="drawer-scrim" type="button" data-close-drawer aria-label="关闭冰箱贴"></button>
+    <section class="drawer-paper" role="dialog" aria-modal="true" aria-labelledby="fridgeTitle">
+        <div class="drawer-handle"></div><header class="drawer-header"><div><span class="eyebrow">A DATE TO KEEP</span><h2 id="fridgeTitle">贴下一个重要日子</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭"><i data-lucide="x"></i></button></header>
+        <form action="{{ url_for('add_fridge_item') }}" method="POST">
+            <div class="field"><label for="fridge-title">这是什么日子</label><input id="fridge-title" name="title" maxlength="100" required placeholder="例如：第一次一起旅行"></div>
+            <div class="field-grid"><div class="field"><label for="target-date">日期</label><input id="target-date" type="date" name="target_date" required></div><div class="field"><label for="item-type">怎么记</label><select id="item-type" name="item_type"><option value="anniversary">已经发生的纪念日</option><option value="countdown">正在期待的倒数日</option></select></div></div>
+            <button class="primary-action full" type="submit"><i data-lucide="pin"></i>贴到冰箱上</button>
+        </form>
+    </section>
+</div>
 {% endblock %}

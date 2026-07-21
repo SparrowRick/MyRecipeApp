@@ -1,18 +1,5 @@
 {% extends "base.html" %}
-
+{% block title %}创建账号 · 我们的小窝{% endblock %}
 {% block content %}
-    <h2>注册新账户</h2>
-    <p>创建您的私人菜谱空间。</p>
-    <form action="{{ url_for('register') }}" method="POST" style="max-width: 400px;">
-        <div class="form-group">
-            <label for="username">用户名:</label>
-            <input type="text" id="username" name="username" required>
-        </div>
-        <div class="form-group">
-            <label for="password">密码:</label>
-            <input type="password" id="password" name="password" required>
-        </div>
-        <button type="submit" class="btn">注册</button>
-        <a href="{{ url_for('login') }}" style="margin-left: 15px;">已有账户? 去登录</a>
-    </form>
+<div class="auth-shell"><section class="auth-cover"><span class="eyebrow auth-eyebrow">PRIVATE JOURNAL</span><h1>创建一本新手账</h1><p class="auth-intro">这里默认只为已有的两位使用者开放。</p><form action="{{ url_for('register') }}" method="POST"><div class="field"><label for="username">名字</label><input id="username" name="username" type="text" autocomplete="username" required></div><div class="field"><label for="password">密码</label><input id="password" name="password" type="password" autocomplete="new-password" required></div><button class="primary-action full-action" type="submit"><i data-lucide="bookmark-plus"></i>创建账号</button></form><p class="auth-foot"><a href="{{ url_for('login') }}">已有账号，回到登录</a></p></section></div>
 {% endblock %}

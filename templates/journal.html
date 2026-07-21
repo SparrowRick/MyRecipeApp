@@ -1,165 +1,34 @@
 {% extends "base.html" %}
-
+{% block title %}月光日记 · 我们的小窝{% endblock %}
 {% block content %}
-    
-    <!-- 顶部导航栏 -->
-    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-        <h2 class="text-2xl font-bold text-gray-800">📅 共享日记</h2>
-        
-        <!-- 月份切换器 -->
-        <div class="flex items-center bg-white rounded-lg shadow-sm border p-1">
-            <!-- 上个月 -->
-            {% set prev_month = month - 1 if month > 1 else 12 %}
-            {% set prev_year = year if month > 1 else year - 1 %}
-            <a href="{{ url_for('journal', year=prev_year, month=prev_month) }}" class="p-2 hover:bg-gray-100 rounded-full text-gray-600">
-                <i data-lucide="chevron-left" class="w-5 h-5"></i>
-            </a>
-            
-            <span class="mx-4 font-bold text-lg w-32 text-center">{{ year }}年 {{ month }}月</span>
-            
-            <!-- 下个月 -->
-            {% set next_month = month + 1 if month < 12 else 1 %}
-            {% set next_year = year if month < 12 else year + 1 %}
-            <a href="{{ url_for('journal', year=next_year, month=next_month) }}" class="p-2 hover:bg-gray-100 rounded-full text-gray-600">
-                <i data-lucide="chevron-right" class="w-5 h-5"></i>
-            </a>
-        </div>
+<header class="page-head center">
+    <span class="eyebrow">OUR DAILY PAGES</span>
+    <h1 class="page-title">共享日记</h1>
+    <p class="page-subtitle">每个亮起的小圆点，都是某一天有人在这里停留过。</p>
+</header>
+
+<section class="paper-sheet calendar-book" data-reveal aria-label="{{ year }}年{{ month }}月日历">
+    <span class="tape top" aria-hidden="true"></span>
+    <div class="month-turner">
+        {% set prev_month = month - 1 if month > 1 else 12 %}{% set prev_year = year if month > 1 else year - 1 %}
+        {% set next_month = month + 1 if month < 12 else 1 %}{% set next_year = year if month < 12 else year + 1 %}
+        <a class="icon-button" aria-label="翻到上个月" href="{{ url_for('journal', year=prev_year, month=prev_month) }}"><i data-lucide="chevron-left"></i></a>
+        <strong>{{ year }} 年 {{ month }} 月</strong>
+        <a class="icon-button" aria-label="翻到下个月" href="{{ url_for('journal', year=next_year, month=next_month) }}"><i data-lucide="chevron-right"></i></a>
     </div>
-
-    <p class="mb-4 text-gray-600">
-        {% if partner_name %}
-            <span class="dot dot-me" style="display: inline-block;"></span> = 我
-            <span class="dot dot-partner" style="display: inline-block; margin-left: 10px;"></span> = {{ partner_name }}
-        {% endif %}
-    </p>
-
-    <!-- 真实日历网格 -->
+    <div class="calendar-legend"><span><i class="dot dot-me"></i>我写过</span><span><i class="dot dot-partner"></i>{{ partner_name }} 写过</span></div>
     <div class="calendar-grid">
-        <!-- 星期表头 -->
-        <div class="calendar-header">一</div>
-        <div class="calendar-header">二</div>
-        <div class="calendar-header">三</div>
-        <div class="calendar-header">四</div>
-        <div class="calendar-header">五</div>
-        <div class="calendar-header text-rose-500">六</div>
-        <div class="calendar-header text-rose-500">日</div>
-        
-        <!-- 
-          遍历后端传来的日历矩阵 
-          week 是一个列表, 如 [0, 0, 1, 2, 3, 4, 5]
-        -->
-        {% for week in cal_matrix %}
-            {% for day in week %}
-                
-                {% if day == 0 %}
-                    <!-- 0 代表空白(上月或下月) -->
-                    <div class="calendar-day other-month"></div>
-                {% else %}
-                    <!-- 真实日期 -->
-                    <!-- 格式化日期字符串 YYYY-MM-DD -->
-                    {% set date_str = '%04d-%02d-%02d' | format(year, month, day) %}
-                    {% set data = calendar_data.get(date_str, {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}) %}
-                    
-                    <div class="calendar-day" 
-                         data-date="{{ date_str }}"
-                         data-me="{{ 'true' if data.me else 'false' }}"
-                         data-partner="{{ 'true' if data.partner else 'false' }}"
-                         data-me-content="{{ data.me_content }}"
-                         data-partner-content="{{ data.partner_content }}"
-                         onclick="openModal(this)">
-                        
-                        <div class="day-number">{{ day }}</div>
-                        <div class="entry-dots">
-                            {% if data.me %}<span class="dot dot-me"></span>{% endif %}
-                            {% if data.partner %}<span class="dot dot-partner"></span>{% endif %}
-                        </div>
-                    </div>
-                {% endif %}
-                
-            {% endfor %}
-        {% endfor %}
-    </div>
-
-    <script>
-        document.body.dataset.partnerName = "{{ partner_name }}";
-        // 重新激活图标
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    </script>
-{% endblock %}
-```
-
----
-
-### 第二步：让首页动态变“活”
-
-我们需要修改 `app.py` 的 `index` 路由来查询真实数据，并修改 `index.html` 来显示它们。
-
-#### 1. 修改 `app.py`
-找到 `index()` 路由，**替换**为以下代码：
-
-```python
-@app.route('/')
-@login_required
-def index():
-    # 1. 获取 ID 列表
-    user_ids = [current_user.id]
-    if current_user.partner_id:
-        user_ids.append(current_user.partner_id)
-    
-    # 2. 查询最近的动态 (Activities)
-    activities = []
-    
-    # 查询最近的 3 个菜谱
-    recent_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).order_by(Recipe.id.desc()).limit(3).all()
-    for r in recent_recipes:
-        activities.append({
-            'type': 'recipe',
-            'time': r.id, # 这里偷懒用ID排序, 理想情况应添加 created_at 字段
-            'text': f"{'我' if r.author_id == current_user.id else 'TA'} 添加了新菜谱: {r.name}"
-        })
-        
-    # 查询最近的 3 个回忆
-    recent_memories = Memory.query.filter(Memory.author_id.in_(user_ids)).order_by(Memory.id.desc()).limit(3).all()
-    for m in recent_memories:
-        activities.append({
-            'type': 'memory',
-            'time': m.id,
-            'text': f"{'我' if m.author_id == current_user.id else 'TA'} 添加了新回忆: {m.title}"
-        })
-    
-    # 简单排序并取前 5 个 (混合排序)
-    # 注意: 因为我们没有统一的时间字段, 这里只是简单的混排, 
-    # 真正的生产环境应该给所有表加 created_at 字段
-    activities.sort(key=lambda x: x['time'], reverse=True)
-    latest_activities = activities[:5]
-
-    return render_template('index.html', activities=latest_activities)
-```
-
-#### 2. 修改 `templates/index.html`
-修改“最近动态”部分，使用循环来渲染。
-
-```html
-    <!-- ... 上面的代码不变 ... -->
-
-    <!-- 动态部分 -->
-    <div class="mt-8">
-        <h2 class="text-2xl font-bold mb-4">最近动态</h2>
-        <div class="bg-white rounded-xl shadow-lg p-6 space-y-4">
-            
-            {% for activity in activities %}
-                <div class="border-l-4 
-                    {{ 'border-rose-400' if activity.type == 'recipe' else 'border-blue-400' }} 
-                    pl-4">
-                    <p class="font-semibold">{{ activity.text }}</p>
-                    <!-- 由于没有真实时间字段，暂时不显示时间，或者显示 '近期' -->
-                    <span class="text-sm text-gray-500">近期</span>
-                </div>
+        {% for name in ['一','二','三','四','五','六','日'] %}<div class="calendar-header">{{ name }}</div>{% endfor %}
+        {% for week in cal_matrix %}{% for day in week %}
+            {% if day == 0 %}<div class="calendar-day other-month"></div>
             {% else %}
-                <p class="text-gray-500">还没有动态，快去添加第一个内容吧！</p>
-            {% endfor %}
-            
-        </div>
+                {% set date_str = '%04d-%02d-%02d' | format(year, month, day) %}{% set data = calendar_data.get(date_str, {'me': False, 'partner': False, 'me_content': '', 'partner_content': ''}) %}
+                <button type="button" class="calendar-day {{ 'is-today' if date_str == today_str else '' }}" data-date="{{ date_str }}" data-me="{{ 'true' if data.me else 'false' }}" data-partner="{{ 'true' if data.partner else 'false' }}" data-me-content="{{ data.me_content }}" data-partner-content="{{ data.partner_content }}" onclick="openModal(this)" aria-label="{{ date_str }}{% if data.me or data.partner %}，有日记{% endif %}">
+                    <span class="day-number">{{ day }}</span><span class="entry-dots">{% if data.me %}<i class="dot dot-me"></i>{% endif %}{% if data.partner %}<i class="dot dot-partner"></i>{% endif %}</span>
+                </button>
+            {% endif %}
+        {% endfor %}{% endfor %}
     </div>
-
-    <!-- ... 下面的代码不变 ... -->
+</section>
+<p class="chapter-note calendar-note">点开任意一天，可以阅读或续写那一页。</p>
+{% endblock %}

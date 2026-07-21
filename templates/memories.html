@@ -1,52 +1,29 @@
 {% extends "base.html" %}
+{% block title %}回忆 · 我们的小窝{% endblock %}
 {% block content %}
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2>💖 我们的纪念册</h2>
-        <a href="{{ url_for('add_memory') }}" class="btn">
-            + 添加新回忆
+<header class="page-head page-head-row">
+    <div><span class="eyebrow">OUR ALBUM</span><h1 class="page-title">一起走过的地方</h1><p class="page-subtitle">把值得记住的片段，按时间轻轻夹进这本纪念册。</p></div>
+    <a class="quiet-action" href="{{ url_for('add_memory') }}"><i data-lucide="pencil-line"></i>写一段回忆</a>
+</header>
+
+{% if memories %}
+<section class="memory-timeline" aria-label="回忆时间线">
+    {% for memory in memories %}
+    <article class="memory-item" data-reveal>
+        <time class="memory-date" datetime="{{ memory.memory_date.isoformat() if memory.memory_date else '' }}">
+            {% if memory.memory_date %}<b>{{ memory.memory_date.strftime('%m.%d') }}</b>{{ memory.memory_date.strftime('%Y') }}{% else %}<b>未定日期</b>{% endif %}
+        </time>
+        <a class="memory-content" href="{{ url_for('memory_detail', memory_id=memory.id) }}">
+            {% if memory.image_file and memory.image_file != 'default.jpg' %}<img class="memory-thumb" src="{{ url_for('static', filename='uploads/' + memory.image_file) }}" alt="" loading="lazy" width="232" height="174">{% endif %}
+            <div class="memory-meta"><span>{{ memory.location or '留在心里的某处' }}</span><span>·</span><span>{{ '我' if memory.author_id == current_user.id else memory.author.username }}</span></div>
+            <h2>{{ memory.title }}</h2>
+            <p>{{ memory.content | striptags | truncate(110, True, '…') }}</p>
         </a>
-    </div>
-    
-    <p>这里会显示您和您伴侣共同添加的所有美好回忆。</p>
-    
-    <!-- V3.1: 纪念册卡片网格 -->
-    <div class="memories-grid" style="margin-top: 20px;">
-        
-        {% for memory in memories %}
-            <!-- 
-              我们用 <a> 标签包裹卡片, 使其可以点击
-              卡片的 CSS 样式在 base.html 中定义
-            -->
-            <a href="{{ url_for('memory_detail', memory_id=memory.id) }}" class="memory-card">
-                <img src="{{ url_for('static', filename='uploads/' + memory.image_file) }}" alt="{{ memory.title }}">
-                <div class="memory-card-content">
-                    <h3>{{ memory.title }}</h3>
-                    <div class="memory-card-meta">
-                        <!-- 
-                          如果 memory_date (日期) 存在, 格式化它
-                          strftime('%Y年%m月%d日')
-                        -->
-                        {% if memory.memory_date %}
-                            <span>{{ memory.memory_date.strftime('%Y年%m月%d日') }}</span>
-                        {% endif %}
-                        {% if memory.location %}
-                            <span>· {{ memory.location }}</span>
-                        {% endif %}
-                    </div>
-                    <div class="memory-card-author">
-                        (由 
-                        {% if memory.author_id == current_user.id %}
-                            <strong style="color: #007BFF;">我</strong>
-                        {% else %}
-                            <strong style="color: #28a745;">{{ memory.author.username }}</strong>
-                        {% endif %}
-                        添加)
-                    </div>
-                </div>
-            </a>
-        {% else %}
-            <p>您们还没有添加任何回忆。 <a href="{{ url_for('add_memory') }}">马上去添加第一个！</a></p>
-        {% endfor %}
-        
-    </div>
+    </article>
+    {% endfor %}
+</section>
+{% else %}
+<section class="empty-story paper-sheet"><i data-lucide="images"></i><h2>纪念册还在等第一张纸片</h2><p>不用等特别隆重的日子，一顿好吃的晚饭也值得被留下。</p><a class="primary-action" href="{{ url_for('add_memory') }}"><i data-lucide="pencil-line"></i>写下第一段</a></section>
+{% endif %}
+<a class="primary-action floating-create" href="{{ url_for('add_memory') }}"><i data-lucide="pencil-line"></i>写下一段回忆</a>
 {% endblock %}
