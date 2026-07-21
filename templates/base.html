@@ -228,7 +228,21 @@
         });
         // 注册 Service Worker（Web Push 和离线缓存必需）
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/static/sw.js').catch(function(err) {
+            navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                // 检查是否有新版本的 SW 等待激活
+                if (reg.waiting) {
+                    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                }
+                reg.addEventListener('updatefound', function() {
+                    var newWorker = reg.installing;
+                    newWorker.addEventListener('statechange', function() {
+                        if (newWorker.state === 'activated') {
+                            // 新 SW 已激活，可选：提示用户刷新
+                            console.log('Service Worker 已更新');
+                        }
+                    });
+                });
+            }).catch(function(err) {
                 console.error('Service Worker 注册失败:', err);
             });
         }

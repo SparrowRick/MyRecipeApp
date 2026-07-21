@@ -36,10 +36,11 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['DASHSCOPE_API_KEY'] = 'sk-3e0826f5b610402d849223ef6029c421'
 
 # --- Web Push VAPID 配置 ---
-# 生成方法: python -c "from py_vapid import Vapid; v=Vapid(); v.generate_keys(); print(v.private_pem().decode()); print(v.public_key.public_bytes(__import__('cryptography').hazmat.primitives.serialization.Encoding.X962, __import__('cryptography').hazmat.primitives.serialization.PublicFormat.UncompressedPoint).hex())"
-# 或使用: npx web-push generate-vapid-keys
-VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
-VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
+# 注意: py_vapid 的 Vapid.from_string() 会把输入当 base64 解码，
+# 不能包含 PEM 头尾标记（-----BEGIN/END...-----），否则解码失败导致推送静默失败。
+# 所以这里直接用纯 base64（DER 编码）格式。
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', 'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgJkA6A9KXNKMNfbHXt7kD6S9YKbz8hbIRp7jK43zVY7ShRANCAAQJEWEwQEsmpuelBAqIDPJuZH+XjOiqe41/C8aSDm+TIe501zHQJxEdArAnNlee+KHgXC9rYvcJm/j/EWwoPW8g')
+VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', 'BAkRYTBASyam56UECogM8m5kf5eM6Kp7jX8LxpIOb5Mh7nTXMdAnER0CsCc2V574oeBcL2ti9wmb-P8RbCg9byA')
 VAPID_CLAIMS = {"sub": "mailto:admin@example.com"}
 
 # --- NEW: 关键修复！增加 SQLite 等待时间与连接池容错 ---
@@ -502,6 +503,8 @@ def send_push(user, title, body):
         )
     except WebPushException as e:
         print(f"Web Push failed: {e}")
+    except Exception as e:
+        print(f"Web Push unexpected error: {type(e).__name__}: {e}")
 
 @app.route('/push/vapid-public-key')
 @login_required
