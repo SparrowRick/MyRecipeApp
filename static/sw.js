@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lovers-space-static-v7';
+const CACHE_NAME = 'lovers-space-static-v8';
 const STATIC_ASSETS = [
     '/static/manifest.json',
     '/static/icon.png',

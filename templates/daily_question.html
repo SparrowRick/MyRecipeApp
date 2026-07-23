@@ -63,7 +63,7 @@
     <section class="drawer-paper" role="dialog" aria-modal="true" aria-labelledby="skipTitle">
         <div class="drawer-handle"></div><header class="drawer-header"><div><span class="eyebrow">TURN THE PAGE</span><h2 id="skipTitle">今天不聊这道题</h2></div><button class="icon-button" type="button" data-close-drawer aria-label="关闭"><i data-lucide="x"></i></button></header>
         <p class="page-subtitle">告诉系统一点原因，下一道问题会更懂你们。</p>
-        <form action="{{ url_for('feedback_daily_question', question_id=question.id) }}" method="POST"><input type="hidden" name="feedback_type" value="skipped"><div class="field"><label for="skip-reason">为什么想翻过这一页</label><select id="skip-reason" name="reason" required>{% for code, label in feedback_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div><button class="primary-action full" type="submit"><i data-lucide="book-open"></i>翻到下一页</button></form>
+        <form action="{{ url_for('feedback_daily_question', question_id=question.id) }}" method="POST"><input type="hidden" name="feedback_type" value="skipped"><div class="field"><label for="skip-reason">为什么想翻过这一页</label><select id="skip-reason" name="reason" required>{% for code, label in feedback_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div><button class="primary-action full" type="submit"><i data-lucide="book-open"></i>今天先收到这里</button></form>
     </section>
 </div>
 {% endif %}

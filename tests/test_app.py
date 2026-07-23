@@ -1,4 +1,9 @@
+import os
 import unittest
+from unittest import mock
+
+# Tests must never connect to the application's real SQLite file.
+os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 import app as application
 
@@ -111,6 +116,57 @@ class CoupleAppTestCase(unittest.TestCase):
         with self.app.app_context():
             open_questions = application.DailyQuestion.query.filter_by(status='open').all()
             self.assertEqual([item.id for item in open_questions], [original_id])
+
+    def test_completed_question_is_reused_for_the_rest_of_the_day(self):
+        today = application.datetime.date.today().isoformat()
+        with self.app.app_context():
+            question = application.DailyQuestion(
+                content='今天最想和对方分享的一件小事是什么？',
+                date_str=today,
+            )
+            self.db.session.add(question)
+            self.db.session.commit()
+            question_id = question.id
+
+        first_client = self.app.test_client()
+        self.login_as(first_client, self.first_id)
+        second_client = self.app.test_client()
+        self.login_as(second_client, self.second_id)
+        first_client.post(f'/daily_question/answer/{question_id}', data={'content': '我的回答'})
+        second_client.post(f'/daily_question/answer/{question_id}', data={'content': '对方的回答'})
+
+        with mock.patch.object(application, 'generate_question_from_ai') as generate:
+            response = first_client.get('/daily_question')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('今天最想和对方分享的一件小事是什么？'.encode('utf-8'), response.data)
+        generate.assert_not_called()
+        with self.app.app_context():
+            self.assertEqual(application.DailyQuestion.query.count(), 1)
+
+    def test_new_question_is_created_on_next_day_after_completion(self):
+        next_day = application.datetime.date(2026, 7, 23)
+        with self.app.app_context():
+            previous = application.DailyQuestion(
+                content='昨天最值得记住的小事是什么？',
+                date_str='2026-07-22',
+                status='completed',
+            )
+            self.db.session.add(previous)
+            self.db.session.commit()
+
+            with mock.patch.object(
+                application,
+                'generate_question_from_ai',
+                return_value=('今天想一起完成哪件小事？', {'model': 'test'}),
+            ) as generate:
+                first = application.get_or_create_daily_question(next_day)
+                second = application.get_or_create_daily_question(next_day)
+
+            self.assertEqual(first.id, second.id)
+            self.assertEqual(first.date_str, next_day.isoformat())
+            self.assertEqual(application.DailyQuestion.query.count(), 2)
+            generate.assert_called_once_with()
 
     def test_skip_feedback_closes_question(self):
         with self.app.app_context():

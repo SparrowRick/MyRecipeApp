@@ -607,7 +607,7 @@ def index():
             'is_past': diff_days <= 0
         })
     
-    active_question = DailyQuestion.query.filter_by(status='open').order_by(DailyQuestion.id.desc()).first()
+    active_question = get_current_daily_question(today_date)
     today_str = today_date.isoformat()
     weekday_names = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
     today_label = f"{today_date.year}年{today_date.month}月{today_date.day}日 · {weekday_names[today_date.weekday()]}"
@@ -1025,8 +1025,19 @@ def delete_wish(item_id):
     if item and item.author_id == current_user.id: db.session.delete(item); db.session.commit()
     return redirect(url_for('wishlist'))
 
-def get_or_create_open_question():
+def get_current_daily_question(today=None):
+    """Return the unanswered carry-over question or the question already used today."""
+    today = today or datetime.date.today()
     question = DailyQuestion.query.filter_by(status='open').order_by(DailyQuestion.id.desc()).first()
+    if question:
+        return question
+    return DailyQuestion.query.filter_by(date_str=today.isoformat()).order_by(DailyQuestion.id.desc()).first()
+
+
+def get_or_create_daily_question(today=None):
+    """Keep one question per day while carrying unanswered questions across days."""
+    today = today or datetime.date.today()
+    question = get_current_daily_question(today)
     if question:
         return question
     content, meta = generate_question_from_ai()
@@ -1035,7 +1046,7 @@ def get_or_create_open_question():
         content = choose_fallback_question()
         source = '精选题库'
     question = DailyQuestion(
-        content=content, date_str=datetime.date.today().isoformat(), source=source,
+        content=content, date_str=today.isoformat(), source=source,
         status='open', generation_meta=json.dumps(meta, ensure_ascii=False)
     )
     db.session.add(question)
@@ -1044,7 +1055,10 @@ def get_or_create_open_question():
         return question
     except IntegrityError:
         db.session.rollback()
-        return DailyQuestion.query.filter_by(status='open').order_by(DailyQuestion.id.desc()).first()
+        question = get_current_daily_question(today)
+        if question:
+            return question
+        raise
 
 
 @app.route('/daily_question')
@@ -1057,7 +1071,7 @@ def daily_question():
     requested_id = request.args.get('question_id', type=int)
     question = db.session.get(DailyQuestion, requested_id) if requested_id else None
     if not question:
-        question = get_or_create_open_question()
+        question = get_or_create_daily_question()
 
     my_answer = DailyAnswer.query.filter_by(question_id=question.id, user_id=current_user.id).first()
     partner_answer = DailyAnswer.query.filter_by(question_id=question.id, user_id=current_user.partner_id).first()

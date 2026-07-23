@@ -6,6 +6,12 @@
     const userId = body.dataset.userId || '';
     let lastTrigger = null;
 
+    function syncDrawerViewport() {
+        const viewport = window.visualViewport;
+        const height = viewport ? viewport.height : window.innerHeight;
+        document.documentElement.style.setProperty('--drawer-viewport-height', `${Math.round(height)}px`);
+    }
+
     function icons() {
         if (window.lucide) window.lucide.createIcons({ attrs: { 'aria-hidden': 'true' } });
     }
@@ -39,6 +45,7 @@
     function openDrawer(name, trigger) {
         const drawer = document.querySelector(`[data-drawer="${name}"]`);
         if (!drawer) return;
+        syncDrawerViewport();
         lastTrigger = trigger || document.activeElement;
         drawer.hidden = false;
         body.classList.add('drawer-open');
@@ -61,6 +68,10 @@
             button.addEventListener('click', () => closeDrawer(button.closest('.drawer')));
         });
         document.querySelectorAll('.drawer').forEach((drawer) => {
+            drawer.addEventListener('focusin', (event) => {
+                if (!event.target.matches('input, select, textarea')) return;
+                window.requestAnimationFrame(() => event.target.scrollIntoView({ block: 'nearest' }));
+            });
             drawer.addEventListener('keydown', (event) => {
                 if (event.key !== 'Tab') return;
                 const targets = focusables(drawer);
@@ -254,6 +265,10 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+        syncDrawerViewport();
+        window.addEventListener('resize', syncDrawerViewport);
+        window.visualViewport?.addEventListener('resize', syncDrawerViewport);
+        window.visualViewport?.addEventListener('scroll', syncDrawerViewport);
         addCsrfToForms();
         setupDrawers();
         setupMenus();
