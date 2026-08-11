@@ -144,6 +144,23 @@ class CoupleAppTestCase(unittest.TestCase):
         with self.app.app_context():
             self.assertEqual(application.DailyQuestion.query.count(), 1)
 
+    def test_only_one_primary_question_can_exist_per_day(self):
+        today = application.datetime.date.today().isoformat()
+        with self.app.app_context():
+            first = application.DailyQuestion(
+                content='今天最想和对方分享的一件小事是什么？', date_str=today,
+            )
+            self.db.session.add(first)
+            self.db.session.commit()
+
+            duplicate = application.DailyQuestion(
+                content='今天有没有一句想对对方说的话？', date_str=today,
+            )
+            self.db.session.add(duplicate)
+            with self.assertRaises(application.IntegrityError):
+                self.db.session.commit()
+            self.db.session.rollback()
+
     def test_new_question_is_created_on_next_day_after_completion(self):
         next_day = application.datetime.date(2026, 7, 23)
         with self.app.app_context():

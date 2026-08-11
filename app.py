@@ -322,9 +322,16 @@ class DailyQuestion(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     closed_at = db.Column(db.DateTime, nullable=True)
     generation_meta = db.Column(db.Text, nullable=True)
+    # Legacy duplicate questions are retained for history, but only the primary
+    # record is eligible to be shown as that day's daily question.
+    is_daily_primary = db.Column(db.Boolean, nullable=False, default=True)
     answers = db.relationship('DailyAnswer', backref='question', lazy=True, cascade="all, delete-orphan")
     __table_args__ = (
         db.Index('uq_daily_question_single_open', 'status', unique=True, sqlite_where=db.text("status = 'open'")),
+        db.Index(
+            'uq_daily_question_date_primary', 'date_str', unique=True,
+            sqlite_where=db.text('is_daily_primary = 1')
+        ),
     )
 
 class DailyAnswer(db.Model):
@@ -1026,12 +1033,19 @@ def delete_wish(item_id):
     return redirect(url_for('wishlist'))
 
 def get_current_daily_question(today=None):
-    """Return the unanswered carry-over question or the question already used today."""
+    """Return today's question, or an unanswered question carried over from earlier."""
     today = today or datetime.date.today()
-    question = DailyQuestion.query.filter_by(status='open').order_by(DailyQuestion.id.desc()).first()
+    # A completed/skipped question must still be reused for the rest of its day.
+    # Checking the date first prevents its status from accidentally triggering a
+    # second AI generation on the same day.
+    question = DailyQuestion.query.filter_by(
+        date_str=today.isoformat(), is_daily_primary=True
+    ).first()
     if question:
         return question
-    return DailyQuestion.query.filter_by(date_str=today.isoformat()).order_by(DailyQuestion.id.desc()).first()
+    return DailyQuestion.query.filter_by(
+        status='open', is_daily_primary=True
+    ).order_by(DailyQuestion.id.desc()).first()
 
 
 def get_or_create_daily_question(today=None):
@@ -1047,7 +1061,8 @@ def get_or_create_daily_question(today=None):
         source = '精选题库'
     question = DailyQuestion(
         content=content, date_str=today.isoformat(), source=source,
-        status='open', generation_meta=json.dumps(meta, ensure_ascii=False)
+        status='open', is_daily_primary=True,
+        generation_meta=json.dumps(meta, ensure_ascii=False)
     )
     db.session.add(question)
     try:
