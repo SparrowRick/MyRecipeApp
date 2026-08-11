@@ -183,18 +183,19 @@ def generate_question_from_ai():
 {{"candidates":[{{"question":"...？","natural":1到10,"desire":1到10}}]}}
 """
     data = {
-        'model': 'deepseek-v4-flash',
-        'input': {'messages': [{'role': 'user', 'content': prompt_text}]},
-        'parameters': {'result_format': 'message', 'temperature': 0.7, 'top_p': 0.8}
+        'model': 'qwen3.7-flash-2026-07-15',
+        'messages': [{'role': 'user', 'content': prompt_text}],
+        'temperature': 0.7,
+        'top_p': 0.8
     }
     try:
         response = requests.post(
-            'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+            'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
             headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-            json=data, timeout=15
+            json=data, timeout=120
         )
         response.raise_for_status()
-        raw = response.json()['output']['choices'][0]['message']['content']
+        raw = response.json()['choices'][0]['message']['content']
         parsed = _extract_json(raw) or {}
         candidates = parsed.get('candidates', [])[:4]
         valid = []
@@ -786,23 +787,20 @@ def ai_menu():
         5. 请输出：(1) 推荐菜单名称列表；(2) 所有推荐菜所需的材料统筹清单；(3) 简短的做菜顺序建议。
         """
         
-        url = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation'
+        url = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
         headers = { 'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json' }
         data = { 
-            "model": "deepseek-v4-flash",
-            "input": { "messages": [{"role": "user", "content": prompt_text}] },
-            "parameters": {
-                "result_format": "message",
-                "temperature": 0.8
-            }
+            "model": "qwen3.7-flash-2026-07-15",
+            "messages": [{"role": "user", "content": prompt_text}],
+            "temperature": 0.8
         }
         
         try:
-            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=15)
+            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=120)
             if response.status_code == 200:
                 res_json = response.json()
-                if 'output' in res_json and 'choices' in res_json['output']:
-                    raw = res_json['output']['choices'][0]['message']['content']
+                if 'choices' in res_json and res_json['choices']:
+                    raw = res_json['choices'][0]['message']['content']
                     result = render_safe_markdown(raw)
             else:
                 flash(f'AI 接口返回错误: {response.text}', 'error')
@@ -1252,13 +1250,13 @@ def refresh_ai_profile():
     prompt = f"""将以下情侣内容整理成不超过600字的客观档案，只保留共同兴趣、近期生活主题、沟通偏好和明确禁区。不要评价关系，不推断疾病或人格。\n{_build_profile_source()}"""
     try:
         response = requests.post(
-            'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+            'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
             headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-            json={'model': 'deepseek-v4-flash', 'input': {'messages': [{'role': 'user', 'content': prompt}]}, 'parameters': {'result_format': 'message', 'temperature': 0.2}},
-            timeout=20
+            json={'model': 'qwen3.7-flash-2026-07-15', 'messages': [{'role': 'user', 'content': prompt}], 'temperature': 0.2},
+            timeout=120
         )
         response.raise_for_status()
-        summary = response.json()['output']['choices'][0]['message']['content'].strip()[:1200]
+        summary = response.json()['choices'][0]['message']['content'].strip()[:1200]
         profile = CoupleAIProfile.query.first() or CoupleAIProfile()
         profile.summary = summary
         profile.updated_at = utcnow()
