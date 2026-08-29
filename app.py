@@ -89,22 +89,43 @@ login_manager.login_message_category = 'error'
 
 # 本地题库 (AI 失败时的兜底)
 QUESTIONS_POOL = [
-    "最近一周，我做过哪件小事让你觉得被照顾到了？",
-    "这个周末只安排一件放松的事，你最想和我做什么？",
-    "最近有没有一件你希望我主动帮忙的小事？",
+    "最近一周，对方做过哪件小事让你觉得被照顾到了？",
+    "这个周末只安排一件放松的事，你最想和对方做什么？",
+    "最近有没有一件你希望对方主动帮忙的小事？",
     "我们最近哪顿饭让你最想再吃一次？",
     "最近哪个普通瞬间让你觉得两个人一起生活真好？",
-    "这周有什么事你想让我多听一会儿，先不急着给建议？",
+    "这周有什么事你想让对方多听一会儿，先不急着给建议？",
     "最近我们的相处节奏里，有什么值得继续保持？",
-    "下次只有半天空闲，你想和我怎么度过？",
-    "最近你最想被怎样安慰或支持？",
-    "这周你观察到我有什么小变化？",
+    "下次只有半天空闲，你想和对方怎么度过？",
+    "最近你最想从对方那里得到怎样的安慰或支持？",
+    "这周你观察到对方有什么小变化？",
     "最近有什么小期待，说出来会更容易实现？",
     "如果给这周留下一个画面，你会选哪个瞬间？",
     "最近家里哪件小事调整一下，会让我们都更舒服？",
     "最近有什么好吃的，值得我们一起去尝试？",
-    "今天你最希望我理解你的哪一种感受？",
+    "今天你最希望对方理解你的哪一种感受？",
 ]
+
+QUESTION_THEME_KEYWORDS = {
+    'work': ('工作', '加班', '下班', '项目', '方案', '盯盘', '策略', '客户', '会议', '疲惫', '很累'),
+    'support': ('安慰', '支持', '吐槽', '拥抱', '抱抱', '情绪', '冷静', '复盘', '倾听', '多听', '理解', '沟通', '陪伴', '照顾', '帮忙', '回应', '被重视'),
+    'distance': ('异地', '见面', '视频', '语音', '联络', '距离'),
+    'home': ('家里', '家务', '住处', '房间', '收纳', '洗衣', '生活细节', '小窝'),
+    'future': ('结婚', '领证', '婚礼', '未来', '以后', '住哪里', '小目标'),
+    'food': ('吃', '饭', '餐', '菜', '美食', '餐厅'),
+    'leisure': ('周末', '空闲', '放松', '电影', '游戏', '散步', '旅行'),
+    'memory': ('回忆', '记得', '第一次', '瞬间', '画面'),
+    'growth': ('变化', '进步', '成长', '习惯', '保持'),
+}
+
+QUESTION_THEME_LABELS = {
+    'work': '工作与压力', 'support': '情绪安抚与沟通', 'distance': '异地与联络',
+    'home': '居家生活', 'future': '未来计划', 'food': '饮食', 'leisure': '休闲活动',
+    'memory': '共同回忆', 'growth': '变化与成长',
+}
+
+# 这些活动来自个人职业或技能，除非双方都明确共享，否则会让题目只适合一人回答。
+QUESTION_ROLE_SPECIFIC_TERMS = ('盯盘', '自动化策略', '跑方案', '赶方案', '写方案', '开庭', '写代码', '调接口', '做交易')
 
 QUESTION_FEEDBACK_REASONS = {
     'too_abstract': '太空泛', 'too_complex': '太绕了', 'repetitive': '重复了',
@@ -132,6 +153,38 @@ def _extract_json(text):
         return None
 
 
+def _question_theme(question):
+    """Return the strongest coarse theme so rephrasing cannot bypass diversity checks."""
+    text = re.sub(r'\s+', '', question or '')
+    scored = []
+    for order, (theme, keywords) in enumerate(QUESTION_THEME_KEYWORDS.items()):
+        score = sum(1 for keyword in keywords if keyword in text)
+        if score:
+            scored.append((score, -order, theme))
+    return max(scored)[2] if scored else None
+
+
+def _question_themes(question):
+    text = re.sub(r'\s+', '', question or '')
+    return {
+        theme for theme, keywords in QUESTION_THEME_KEYWORDS.items()
+        if any(keyword in text for keyword in keywords)
+    }
+
+
+def _question_repeats_recent_theme(question, recent_questions):
+    """Cool down a theme used very recently or repeatedly in the recent window."""
+    themes = _question_themes(question)
+    if not themes:
+        return False
+    recent_theme_sets = [_question_themes(old) for old in recent_questions[:8]]
+    return any(
+        any(theme in recent for recent in recent_theme_sets[:3])
+        or sum(theme in recent for recent in recent_theme_sets) >= 2
+        for theme in themes
+    )
+
+
 def _question_is_acceptable(question, recent_questions):
     question = re.sub(r'\s+', '', (question or '').strip())
     if not 15 <= len(question) <= 45 or not question.endswith(('？', '?')):
@@ -139,12 +192,20 @@ def _question_is_acceptable(question, recent_questions):
     banned = ('回到过去', '中了彩票', '中了一千万', '世界末日', '拥有超能力', '童年的影子', '评价现在的你')
     if any(term in question for term in banned):
         return False
+    # 同一道题会原样展示给两个人，单数第一人称会让“我”指向不明。
+    if '我' in question.replace('我们', '') or any(term in question for term in QUESTION_ROLE_SPECIFIC_TERMS):
+        return False
+    # 连续的二选一题既容易套路化，也常把双方锁进不对等角色。
+    if '还是' in question:
+        return False
     if question.count('？') + question.count('?') > 1 or question.count('，') > 3:
         return False
     for old in recent_questions:
         ratio = difflib.SequenceMatcher(None, question, re.sub(r'\s+', '', old)).ratio()
         if ratio >= 0.64:
             return False
+    if _question_repeats_recent_theme(question, recent_questions):
+        return False
     return True
 
 
@@ -170,23 +231,32 @@ def generate_question_from_ai():
     recent_questions = [item['q'] for item in history]
     profile = CoupleAIProfile.query.first()
     profile_summary = profile.summary[:1200] if profile and profile.summary else '暂无档案，从真实、具体的近期生活小事切入。'
+    recent_themes = [
+        '、'.join(QUESTION_THEME_LABELS[theme] for theme in QUESTION_THEME_KEYWORDS if theme in _question_themes(item['q'])) or '其他'
+        for item in history
+    ]
     api_key = app.config.get('DASHSCOPE_API_KEY')
     if not api_key:
         return None, {'reason': 'api_key_missing'}
 
-    prompt_text = f"""你在为一对长期相处的情侣挑选一道值得回答的问题。
-风格：真实具体、自然、轻深结合，15到45个汉字，一次只问一件事。
-避免作文题、强行煽情、复杂脑洞、陈旧假设和未经证实的共同经历。
+    prompt_text = f"""你在为一对长期相处的情侣挑选一道“双方分别回答同一句话”的问题。
+硬性要求：
+1. 同一句问题原样展示给两个人，交换双方身份后仍然完全成立；统一用“对方、彼此、两个人”，不要使用单数第一人称“我、我的、让我、给我”。
+2. 双方都能从自己的经历和感受出发回答；不要指定只属于一人的职业、爱好、日程或家庭角色。情侣档案只用于理解氛围，除非明确属于双方，否则不要把个人细节写进题目。
+3. 15到45个汉字，一次只问一件事，优先开放式问法；不要用“还是”制造二选一。
+4. 8个候选必须来自彼此不同的生活主题；避开下方主题序列最前面的3题所涉及的主题，以及10题内重复出现的主题。换一种说法但主题相同也算重复。
+5. 真实具体、自然、轻深结合；避免作文题、强行煽情、复杂脑洞、陈旧假设和未经证实的共同经历。
 情侣档案摘要：{profile_summary}
 最近10题及反馈（紧凑JSON）：{json.dumps(history, ensure_ascii=False, separators=(',', ':'))}
-生成4个候选。只返回JSON：
-{{"candidates":[{{"question":"...？","natural":1到10,"desire":1到10}}]}}
+最近题目的主题序列（从近到远）：{json.dumps(recent_themes, ensure_ascii=False)}
+生成8个候选并逐题自检“双方是否都适合回答”。只返回JSON：
+{{"candidates":[{{"question":"...？","theme":"主题名","both_answerable":true,"natural":1到10,"desire":1到10,"freshness":1到10}}]}}
 """
     data = {
         'model': 'qwen3.7-flash-2026-07-15',
         'messages': [{'role': 'user', 'content': prompt_text}],
-        'temperature': 0.7,
-        'top_p': 0.8
+        'temperature': 0.9,
+        'top_p': 0.9
     }
     try:
         response = requests.post(
@@ -197,12 +267,17 @@ def generate_question_from_ai():
         response.raise_for_status()
         raw = response.json()['choices'][0]['message']['content']
         parsed = _extract_json(raw) or {}
-        candidates = parsed.get('candidates', [])[:4]
+        candidates = parsed.get('candidates', [])[:8]
         valid = []
         for item in candidates:
             question = str(item.get('question', '')).strip().replace('"', '')
-            if _question_is_acceptable(question, recent_questions):
-                score = float(item.get('natural', 0)) + float(item.get('desire', 0))
+            both_answerable = item.get('both_answerable') in (True, 1, 'true', 'True')
+            if both_answerable and _question_is_acceptable(question, recent_questions):
+                score = (
+                    float(item.get('natural', 0))
+                    + float(item.get('desire', 0))
+                    + float(item.get('freshness', 0))
+                )
                 valid.append((score, question))
         if valid:
             valid.sort(reverse=True)
@@ -216,7 +291,8 @@ def generate_question_from_ai():
 def choose_fallback_question():
     recent = [q.content for q in DailyQuestion.query.order_by(DailyQuestion.id.desc()).limit(10).all()]
     choices = [q for q in QUESTIONS_POOL if _question_is_acceptable(q, recent)]
-    return random.choice(choices or QUESTIONS_POOL)
+    safe_pool = [q for q in QUESTIONS_POOL if _question_is_acceptable(q, [])]
+    return random.choice(choices or safe_pool)
 
 
 @login_manager.user_loader

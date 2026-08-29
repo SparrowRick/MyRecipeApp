@@ -81,6 +81,71 @@ class CoupleAppTestCase(unittest.TestCase):
             history = application._compact_question_history()
             self.assertEqual(len(history), 10)
 
+    def test_question_filter_requires_a_bilateral_neutral_viewpoint(self):
+        recent = []
+        self.assertFalse(application._question_is_acceptable(
+            '当你觉得意见没有被重视时，我应该怎样回应你？', recent
+        ))
+        self.assertFalse(application._question_is_acceptable(
+            '你这周盯盘时最希望对方怎样配合你的节奏？', recent
+        ))
+        self.assertFalse(application._question_is_acceptable(
+            '你难过时更希望对方拥抱你还是陪你散步？', recent
+        ))
+        self.assertTrue(application._question_is_acceptable(
+            '最近哪一种寻常气味会让你立刻觉得安心？', recent
+        ))
+
+    def test_question_filter_cools_down_semantically_repeated_themes(self):
+        recent = [
+            '这周赶方案或盯盘特别累的时候，对方做什么会让你放松？',
+            '异地期间，哪一种联络习惯让你觉得彼此仍然很近？',
+            '高强度工作期情绪急躁时，怎样沟通最有效？',
+            '当意见没被重视时，哪种回应会让你愿意继续说？',
+        ]
+        self.assertFalse(application._question_is_acceptable(
+            '最近工作很累时，你最希望对方怎样陪伴你？', recent
+        ))
+        self.assertFalse(application._question_is_acceptable(
+            '最近不能见面的日子里，什么小事最能缩短距离？', recent
+        ))
+        self.assertTrue(application._question_is_acceptable(
+            '最近哪一种寻常气味会让你立刻觉得安心？', recent
+        ))
+
+    def test_ai_generation_ignores_one_sided_and_repeated_candidates(self):
+        with self.app.app_context():
+            self.db.session.add(application.DailyQuestion(
+                content='最近工作很累时，对方做什么会让你放松？',
+                date_str='2026-08-28', status='completed'
+            ))
+            self.db.session.commit()
+            fake_response = mock.Mock()
+            fake_response.raise_for_status.return_value = None
+            fake_response.json.return_value = {
+                'choices': [{'message': {'content': application.json.dumps({
+                    'candidates': [
+                        {'question': '你这周盯盘时最希望对方怎样配合你的节奏？', 'both_answerable': True, 'natural': 10, 'desire': 10, 'freshness': 10},
+                        {'question': '最近加班回家后，对方做什么最能让你放松？', 'both_answerable': True, 'natural': 9, 'desire': 9, 'freshness': 9},
+                        {'question': '最近哪一种寻常气味会让你立刻觉得安心？', 'both_answerable': False, 'natural': 10, 'desire': 10, 'freshness': 10},
+                        {'question': '最近哪一个普通声音让你感到生活很踏实？', 'both_answerable': True, 'natural': 8, 'desire': 8, 'freshness': 9},
+                    ]
+                }, ensure_ascii=False)}}]
+            }
+            old_key = self.app.config.get('DASHSCOPE_API_KEY')
+            self.app.config['DASHSCOPE_API_KEY'] = 'test-key'
+            try:
+                with mock.patch.object(application.requests, 'post', return_value=fake_response) as post:
+                    question, meta = application.generate_question_from_ai()
+            finally:
+                self.app.config['DASHSCOPE_API_KEY'] = old_key
+
+        self.assertEqual(question, '最近哪一个普通声音让你感到生活很踏实？')
+        self.assertEqual(meta['valid_count'], 1)
+        sent_prompt = post.call_args.kwargs['json']['messages'][0]['content']
+        self.assertIn('同一句问题原样展示给两个人', sent_prompt)
+        self.assertIn('both_answerable', sent_prompt)
+
     def test_outsider_cannot_read_memory_by_id(self):
         with self.app.app_context():
             memory = application.Memory(title='private', content='secret', author_id=self.first_id)
