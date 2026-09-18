@@ -11,3 +11,4 @@ __pycache__/
 .venv/
 backups/
 *.log
+temp_howtocook/

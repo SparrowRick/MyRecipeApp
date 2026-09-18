@@ -69,6 +69,19 @@ $env:FLASK_APP = "app.py"
 .\.venv\Scripts\python.exe backup_data.py --keep 14
 ```
 
+## HowToCook 菜谱同步
+
+菜谱库来自 [HowToCook](https://github.com/Anduin2017/HowToCook)。先备份数据库，再执行迁移和导入：
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app db upgrade
+.\.venv\Scripts\python.exe import_howtocook.py --keep-temp
+```
+
+已有 `temp_howtocook/dishes` 时，使用 `--skip-clone` 重新解析本地原文；要获取新的上游版本，先将旧目录移走，再运行上面的导入命令。脚本不会自动删除已有下载目录。
+
+重复导入会更新系统菜谱，保留菜谱 ID 和下厨批注，不修改私人菜谱。不同源文件的同名菜谱分别保存。详情保留原文的份数、用量、工具和操作说明；食材匹配只作选菜辅助，仍需核对原文。`--limit 10 --no-images --keep-temp` 可用于少量试导入。
+
 ## 测试
 
 测试不会调用 AI 接口，也不会批量生成问题：

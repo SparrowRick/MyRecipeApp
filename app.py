@@ -22,7 +22,8 @@ from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename 
-from sqlalchemy import or_ 
+from sqlalchemy import or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -329,12 +330,19 @@ class User(UserMixin, db.Model):
 
 class Recipe(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
     instructions = db.Column(db.Text, nullable=True)
+    tips = db.Column(db.Text, nullable=True)
     image_file = db.Column(db.String(100), nullable=False, default='default.jpg')
     category = db.Column(db.String(50), nullable=True)
+    difficulty = db.Column(db.Integer, nullable=True)
+    calories = db.Column(db.Integer, nullable=True)
+    source = db.Column(db.String(50), nullable=True)
+    source_url = db.Column(db.String(300), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    __table_args__ = (db.UniqueConstraint('name', 'user_id', name='uq_recipe_name_user'),)
     ingredients = db.relationship('Ingredient', backref='recipe', lazy=True, cascade="all, delete-orphan")
     seasonings = db.relationship('Seasoning', backref='recipe', lazy=True, cascade="all, delete-orphan")
     logs = db.relationship('CookingLog', backref='recipe', lazy=True, cascade="all, delete-orphan")
@@ -720,28 +728,97 @@ def index():
 
 # (菜谱路由保持不变: recipes_list, add_recipe, recipe_detail, delete_recipe, add_log, what_can_i_make)
 # ... (为简洁省略，请保留原代码) ...
+RECIPES_PER_PAGE = 24
+
+# Only equivalent ingredient names: cuts of meat are not interchangeable.
+INGREDIENT_ALIASES = {'番茄': '西红柿', '土豆': '马铃薯', '洋芋': '马铃薯',
+                      '包菜': '卷心菜', '圆白菜': '卷心菜', '大蒜': '蒜'}
+
+
+def ingredient_matches(required, available):
+    def normalize(value):
+        value = re.sub(r'[（(].*', '', value).strip()
+        return INGREDIENT_ALIASES.get(value, value)
+    return normalize(required) == normalize(available)
+
+
 @app.route('/recipes')
 @login_required
 def recipes_list():
     user_ids = [current_user.id]
     if current_user.partner_id: user_ids.append(current_user.partner_id)
     system_user = User.query.filter_by(username=SYSTEM_RECIPE_USERNAME).first()
-    if system_user: user_ids.append(system_user.id)
-    all_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).order_by(Recipe.category.asc(), Recipe.id.desc()).all()
+    system_id = system_user.id if system_user else None
+    if system_id: user_ids.append(system_id)
 
-    # 按种类分组
-    grouped_by_category = {}
-    for r in all_recipes:
-        key = r.category or '未分类'
-        grouped_by_category.setdefault(key, []).append(r)
+    keyword = request.args.get('q', '').strip()
+    category = request.args.get('category', '').strip()
+    scope = request.args.get('scope', '').strip()
+    if scope not in ('ours', 'library'):
+        scope = ''
+    page = request.args.get('page', 1, type=int)
 
-    # 按添加人分组
-    grouped_by_author = {}
-    for r in all_recipes:
-        author_name = '我' if r.user_id == current_user.id else (r.author.username if r.author else '未知')
-        grouped_by_author.setdefault(author_name, []).append(r)
+    def apply_filters(query, with_category=True):
+        query = query.filter(Recipe.user_id.in_(user_ids))
+        if system_id and scope == 'ours':
+            query = query.filter(Recipe.user_id != system_id)
+        elif scope == 'library':
+            query = query.filter(Recipe.user_id == system_id)
+        if keyword:
+            canonical = INGREDIENT_ALIASES.get(keyword, keyword)
+            terms = {keyword, canonical} | {name for name, value in INGREDIENT_ALIASES.items() if value == canonical}
+            query = query.filter(or_(*[
+                or_(Recipe.name.ilike(f'%{term}%'),
+                    Recipe.ingredients.any(Ingredient.name.ilike(f'%{term}%')))
+                for term in terms
+            ]))
+        if with_category and category:
+            if category == '未分类':
+                query = query.filter(or_(Recipe.category.is_(None), Recipe.category == '', Recipe.category == '未分类'))
+            else:
+                query = query.filter(Recipe.category == category)
+        return query
 
-    return render_template('recipes_list.html', grouped=grouped_by_category, grouped_by_author=grouped_by_author)
+    category_counts = apply_filters(
+        db.session.query(Recipe.category, db.func.count(Recipe.id)), with_category=False
+    ).group_by(Recipe.category).all()
+    counts = {}
+    for name, total in category_counts:
+        name = name or '未分类'
+        counts[name] = counts.get(name, 0) + total
+    categories = sorted(
+        counts.items(),
+        key=lambda row: row[1], reverse=True
+    )
+
+    listing = apply_filters(Recipe.query)
+    if system_id:
+        # The couple's own recipes should never be buried under the imported library.
+        listing = listing.order_by((Recipe.user_id == system_id).asc(), Recipe.name.asc(), Recipe.id.asc())
+    else:
+        listing = listing.order_by(Recipe.name.asc(), Recipe.id.asc())
+    pagination = listing.options(selectinload(Recipe.ingredients)).paginate(
+        page=page, per_page=RECIPES_PER_PAGE, error_out=False
+    )
+    if pagination.pages and pagination.page > pagination.pages:
+        return redirect(url_for('recipes_list', q=keyword, category=category, scope=scope, page=pagination.pages))
+
+    own_total = Recipe.query.filter(Recipe.user_id.in_(
+        [uid for uid in user_ids if uid != system_id]
+    )).count()
+    library_total = Recipe.query.filter_by(user_id=system_id).count() if system_id else 0
+
+    def recipe_url(**overrides):
+        params = {'q': keyword, 'category': category, 'scope': scope}
+        params.update(overrides)
+        return url_for('recipes_list', **{k: v for k, v in params.items() if v})
+
+    return render_template(
+        'recipes_list.html', pagination=pagination, recipes=pagination.items,
+        categories=categories, total_matched=pagination.total, keyword=keyword,
+        active_category=category, scope=scope, system_id=system_id,
+        own_total=own_total, library_total=library_total, recipe_url=recipe_url
+    )
 @app.route('/add_recipe', methods=['GET', 'POST'])
 @login_required
 def add_recipe():
@@ -781,7 +858,8 @@ def recipe_detail(recipe_id):
     recipe = Recipe.query.filter(Recipe.id == recipe_id, Recipe.user_id.in_(user_ids)).first()
     if not recipe: return redirect(url_for('recipes_list'))
     instructions_html = render_safe_markdown(recipe.instructions)
-    return render_template('recipe_detail.html', recipe=recipe, instructions_html=instructions_html)
+    tips_html = render_safe_markdown(recipe.tips) if recipe.tips else None
+    return render_template('recipe_detail.html', recipe=recipe, instructions_html=instructions_html, tips_html=tips_html)
 @app.route('/recipe/<int:recipe_id>/delete', methods=['POST'])
 @login_required
 def delete_recipe(recipe_id):
@@ -810,15 +888,28 @@ def what_can_i_make():
     if system_user: user_ids.append(system_user.id)
     perfect_matches = []; partial_matches = []; pantry_input = ""
     if request.method == 'POST':
-        pantry_input = request.form['pantry']
-        user_pantry_set = {item.strip() for item in re.split(r'[,\s\n]+', pantry_input) if item.strip()}
-        all_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).all()
-        for recipe in all_recipes:
-            req_ings = {ing.name.strip() for ing in recipe.ingredients}
-            if req_ings and req_ings.issubset(user_pantry_set): perfect_matches.append(recipe)
-            elif req_ings:
-                missing = req_ings.difference(user_pantry_set)
-                if len(missing) < len(req_ings): partial_matches.append((recipe, list(missing)))
+        pantry_input = request.form.get('pantry', '')
+        pantry = {item.strip() for item in re.split(r'[,，、;；\s\n]+', pantry_input) if item.strip()}
+        if pantry:
+            all_recipes = Recipe.query.filter(Recipe.user_id.in_(user_ids)).options(
+                selectinload(Recipe.ingredients)
+            ).all()
+            scored = []
+            for recipe in all_recipes:
+                required = [ing.name.strip() for ing in recipe.ingredients
+                            if ing.name.strip() and '可选' not in (ing.quantity or '')]
+                if not required:
+                    continue
+                missing = [n for n in required if not any(ingredient_matches(n, term) for term in pantry)]
+                if len(missing) == len(required):
+                    continue
+                scored.append((len(missing), -(len(required) - len(missing)), recipe, missing))
+            scored.sort(key=lambda row: (row[0], row[1], row[2].name))
+            for missing_count, _, recipe, missing in scored:
+                if missing_count == 0:
+                    perfect_matches.append(recipe)
+                elif len(partial_matches) < 40:
+                    partial_matches.append((recipe, missing))
     return render_template('what_can_i_make.html', perfect_matches=perfect_matches, partial_matches=partial_matches, pantry_input=pantry_input, has_searched=request.method=='POST')
 
 # --- V5.3 NEW: AI 菜单推荐 ---

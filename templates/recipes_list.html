@@ -1,15 +1,90 @@
 {% extends "base.html" %}
 {% block title %}家庭食谱 · 我们的小窝{% endblock %}
 {% block content %}
-<header class="page-head page-head-row"><div><span class="eyebrow">OUR COOKBOOK</span><h1 class="page-title">家里的味道</h1><p class="page-subtitle">做过的、喜欢的，还有下次想试试的，都收在这本食谱里。</p></div><a class="primary-action" href="{{ url_for('add_recipe') }}"><i data-lucide="plus"></i>记一道菜</a></header>
-<div data-tabs>
-    <div class="bookmark-tabs" role="tablist" aria-label="食谱索引方式"><button class="bookmark-tab active" type="button" data-tab-target="category" role="tab">按种类</button><button class="bookmark-tab" type="button" data-tab-target="author" role="tab">按添加人</button></div>
-    <section class="paper-sheet recipe-index" data-tab-panel="category">
-    {% if grouped %}{% for category, recipes in grouped.items() | sort %}<div class="recipe-group"><h2>{{ category }} <span class="hand-label">{{ recipes | length }} 道</span></h2><div class="recipe-list">{% for recipe in recipes %}<a class="recipe-link" href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}"><span><b>{{ recipe.name }}</b><small>{{ '我' if recipe.user_id == current_user.id else recipe.author.username }} 收录{% if recipe.ingredients %} · {{ recipe.ingredients[:3] | map(attribute='name') | join('、') }}{% endif %}</small></span><i data-lucide="arrow-up-right"></i></a>{% endfor %}</div></div>{% endfor %}{% else %}<div class="empty-story"><i data-lucide="cooking-pot"></i><h2>食谱册还是空白的</h2><p>先记下那道你们最常做的菜。</p><a class="primary-action" href="{{ url_for('add_recipe') }}">记第一道菜</a></div>{% endif %}
-    </section>
-    <section class="paper-sheet recipe-index" data-tab-panel="author" hidden>
-    {% if grouped_by_author %}{% for author, recipes in grouped_by_author.items() %}<div class="recipe-group"><h2>{{ author }} 的书签 <span class="hand-label">{{ recipes | length }} 道</span></h2><div class="recipe-list">{% for recipe in recipes %}<a class="recipe-link" href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}"><span><b>{{ recipe.name }}</b><small>{{ recipe.category or '未分类' }}</small></span><i data-lucide="arrow-up-right"></i></a>{% endfor %}</div></div>{% endfor %}{% else %}<div class="empty-story"><p>还没有收录菜谱。</p></div>{% endif %}
-    </section>
+<header class="page-head page-head-row">
+    <div><span class="eyebrow">OUR COOKBOOK</span><h1 class="page-title">家里的味道</h1><p class="page-subtitle">做过的、喜欢的，还有下次想试试的，都收在这本食谱里。</p></div>
+    <a class="primary-action" href="{{ url_for('add_recipe') }}"><i data-lucide="plus"></i>记一道菜</a>
+</header>
+
+<section class="recipe-finder paper-sheet">
+    <form class="recipe-search" action="{{ url_for('recipes_list') }}" method="GET" role="search">
+        <div class="search-field">
+            <i data-lucide="search" aria-hidden="true"></i>
+            <label class="visually-hidden" for="recipeSearch">搜索菜名或食材</label>
+            <input id="recipeSearch" name="q" type="search" value="{{ keyword }}" placeholder="搜菜名或食材，比如「番茄」「排骨」" autocomplete="off">
+            {% if keyword %}<a class="search-clear" href="{{ recipe_url(q='') }}" aria-label="清除搜索"><i data-lucide="x"></i></a>{% endif %}
+        </div>
+        {% if active_category %}<input type="hidden" name="category" value="{{ active_category }}">{% endif %}
+        {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
+        <button class="primary-action" type="submit">搜索</button>
+    </form>
+
+    <div class="chip-row" role="group" aria-label="按来源筛选">
+        <a class="chip-action {% if not scope %}selected{% endif %}" href="{{ recipe_url(scope='') }}">全部</a>
+        <a class="chip-action {% if scope == 'ours' %}selected{% endif %}" href="{{ recipe_url(scope='ours') }}">我们记的 <b>{{ own_total }}</b></a>
+        {% if system_id %}<a class="chip-action {% if scope == 'library' %}selected{% endif %}" href="{{ recipe_url(scope='library') }}">菜谱库 <b>{{ library_total }}</b></a>{% endif %}
+    </div>
+
+    <div class="chip-row" role="group" aria-label="按种类筛选">
+        <a class="chip-action {% if not active_category %}selected{% endif %}" href="{{ recipe_url(category='') }}">不限种类</a>
+        {% for name, total in categories %}
+        <a class="chip-action {% if active_category == name %}selected{% endif %}" href="{{ recipe_url(category=name) }}">{{ name }} <b>{{ total }}</b></a>
+        {% endfor %}
+    </div>
+</section>
+
+{% if recipes %}
+<p class="result-line">共 {{ total_matched }} 道{% if keyword %}，匹配「{{ keyword }}」{% endif %}{% if active_category %} · {{ active_category }}{% endif %}</p>
+<div class="recipe-cards">
+    {% for recipe in recipes %}
+    <a class="recipe-card" href="{{ url_for('recipe_detail', recipe_id=recipe.id) }}">
+        <div class="recipe-card-photo">
+            {% if recipe.image_file and recipe.image_file != 'default.jpg' %}
+            <img src="{{ url_for('static', filename='uploads/' + recipe.image_file) }}" alt="" loading="lazy" decoding="async" width="400" height="300">
+            {% else %}
+            <span class="photo-placeholder" aria-hidden="true"><i data-lucide="cooking-pot"></i></span>
+            {% endif %}
+            {% if recipe.category %}<span class="card-tag">{{ recipe.category }}</span>{% endif %}
+        </div>
+        <div class="recipe-card-body">
+            <b>{{ recipe.name }}</b>
+            {% if recipe.ingredients %}<small>{{ recipe.ingredients[:4] | map(attribute='name') | join(' · ') }}</small>{% endif %}
+            <div class="recipe-card-meta">
+                {% if recipe.difficulty %}<span class="stars" title="难度 {{ recipe.difficulty }} 星"><span aria-hidden="true">{{ '★' * recipe.difficulty }}{{ '☆' * (5 - recipe.difficulty) }}</span><span class="visually-hidden">难度 {{ recipe.difficulty }} 星</span></span>{% endif %}
+                {% if recipe.calories %}<span class="meta-chip">{{ recipe.calories }} 大卡</span>{% endif %}
+                {% if recipe.user_id != system_id %}<span class="meta-chip own">我们记的</span>{% endif %}
+            </div>
+        </div>
+    </a>
+    {% endfor %}
 </div>
+
+{% if pagination.pages > 1 %}
+<nav class="pager" aria-label="翻页">
+    {% if pagination.has_prev %}<a class="quiet-action" href="{{ recipe_url(page=pagination.prev_num) }}"><i data-lucide="arrow-left"></i>上一页</a>{% else %}<span class="quiet-action is-off">上一页</span>{% endif %}
+    <span class="pager-state">第 {{ pagination.page }} / {{ pagination.pages }} 页</span>
+    {% if pagination.has_next %}<a class="quiet-action" href="{{ recipe_url(page=pagination.next_num) }}">下一页<i data-lucide="arrow-right"></i></a>{% else %}<span class="quiet-action is-off">下一页</span>{% endif %}
+</nav>
+{% endif %}
+
+{% else %}
+<div class="empty-story paper-sheet">
+    <i data-lucide="search-x"></i>
+    {% if keyword or active_category or scope %}
+    <h2>没找到相配的菜</h2>
+    <p>试试只搜一个主料，比如「鸡蛋」；或者放宽筛选条件。</p>
+    <div class="chip-row">
+        {% if keyword %}<a class="chip-action" href="{{ recipe_url(q='') }}">清除「{{ keyword }}」</a>{% endif %}
+        {% if active_category %}<a class="chip-action" href="{{ recipe_url(category='') }}">不限种类</a>{% endif %}
+        {% if scope %}<a class="chip-action" href="{{ recipe_url(scope='') }}">看全部来源</a>{% endif %}
+    </div>
+    {% else %}
+    <h2>食谱册还是空白的</h2>
+    <p>先记下那道你们最常做的菜。</p>
+    <a class="primary-action" href="{{ url_for('add_recipe') }}">记第一道菜</a>
+    {% endif %}
+</div>
+{% endif %}
+
 <p class="utility-links"><a href="{{ url_for('what_can_i_make') }}"><i data-lucide="search"></i>按现有食材找菜谱</a><a href="{{ url_for('ai_menu') }}"><i data-lucide="utensils"></i>安排今晚的菜单</a></p>
 {% endblock %}

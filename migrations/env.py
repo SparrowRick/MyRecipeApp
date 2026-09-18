@@ -94,6 +94,9 @@ def run_migrations_online():
     if conf_args.get("process_revision_directives") is None:
         conf_args["process_revision_directives"] = process_revision_directives
 
+    # SQLite cannot ALTER constraints in place; batch mode rebuilds the table instead.
+    conf_args.setdefault("render_as_batch", True)
+
     connectable = get_engine()
 
     with connectable.connect() as connection:
