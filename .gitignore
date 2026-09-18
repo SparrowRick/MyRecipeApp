@@ -12,3 +12,5 @@ __pycache__/
 backups/
 *.log
 temp_howtocook/
+venv/
+AI_MODELS.md
